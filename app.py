@@ -14,9 +14,6 @@ st.set_page_config(
 st.title("🏃 Dashboard สะสมระยะวิ่ง (15 ก.ค. - 15 ส.ค.)")
 st.markdown("---")
 
-# ส่วนใส่ลิงก์ Google Sheet หรือ CSV
-DEFAULT_URL = "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv"
-
 st.sidebar.header("⚙️ การเชื่อมต่อข้อมูล")
 sheet_url = st.sidebar.text_input(
     "ใส่ลิงก์ CSV ของ Google Sheet:",
@@ -136,8 +133,8 @@ if sheet_url:
         progress = min(float(member_summary['เปอร์เซ็นต์ (%)']) / 100.0, 1.0)
         st.progress(progress)
 
-        # ประวัติการวิ่งแต่ละวันของสมาชิก
-        st.write(**ประวัติการวิ่งแต่ละวันของ {selected_member}:**)
+        # ประวัติการวิ่งแต่ละวันของสมาชิก (แก้ไขแล้ว)
+        st.markdown(f"**ประวัติการวิ่งแต่ละวันของ {selected_member}:**")
         
         # แปลงเป็นตารางวันที่
         daily_melted = member_daily.melt(id_vars=['ชื่อ'], var_name='วันที่', value_name='ระยะทาง (กม.)')

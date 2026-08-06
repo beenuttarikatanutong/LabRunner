@@ -34,12 +34,15 @@ st.sidebar.info(
 def load_and_process_data(url):
     df = pd.read_csv(url)
     
-    # ดึงรายชื่อสมาชิกและวันวิ่ง
-    members = df.iloc[0:8, 1].values
+    # 1. กำหนดรายชื่อสมาชิก 8 คนให้ถูกต้อง
+    members = ["พี่หนู", "บี", "พี่จัน", "พี่หยก", "จ๋า", "แดรงค์", "พี่แป๋ว", "อ้อน"]
+    
+    # ดึงตารางระยะทางรายวัน
     daily_df = df.iloc[0:8, 1:].copy()
+    daily_df.iloc[:, 0] = members
     daily_df.rename(columns={daily_df.columns[0]: 'ชื่อ'}, inplace=True)
     
-    # ดึงระยะสะสม เป้าหมาย และระยะคงเหลือ
+    # 2. ดึงระยะสะสม เป้าหมาย และระยะคงเหลือ (ตำแหน่งแถวที่ 9-16 ในไฟล์)
     totals = pd.to_numeric(df.iloc[9:17, 0].values, errors='coerce')
     targets = pd.to_numeric(df.iloc[9:17, 1].values, errors='coerce')
     remaining = pd.to_numeric(df.iloc[9:17, 2].values, errors='coerce')
@@ -51,7 +54,7 @@ def load_and_process_data(url):
         'ระยะคงเหลือ (กม.)': remaining
     }).fillna(0)
     
-    # คำนวณ % ความคืบหน้า (พร้อมป้องกันแบ่งด้วยศูนย์/ค่าว่าง)
+    # คำนวณ % ความคืบหน้า
     summary_df['เปอร์เซ็นต์ (%)'] = np.where(
         summary_df['เป้าหมาย (กม.)'] > 0,
         (summary_df['ระยะสะสม (กม.)'] / summary_df['เป้าหมาย (กม.)'] * 100).round(1),
@@ -134,7 +137,7 @@ if sheet_url:
         )
         m_col4.metric("ความคืบหน้า", f"{member_summary['เปอร์เซ็นต์ (%)']}%")
 
-        # Progress bar ป้องกันค่า NaN
+        # Progress bar
         raw_pct = member_summary['เปอร์เซ็นต์ (%)']
         pct_float = 0.0 if (pd.isna(raw_pct) or np.isinf(raw_pct)) else float(raw_pct)
         progress = max(0.0, min(pct_float / 100.0, 1.0))

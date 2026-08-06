@@ -16,7 +16,7 @@ st.markdown("---")
 st.sidebar.header("⚙️ การเชื่อมต่อข้อมูล")
 sheet_url = st.sidebar.text_input(
     "ใส่ลิงก์ CSV ของ Google Sheet:",
-    value="",
+    value="https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv", # ใส่ลิงก์ตรงนี้
     placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"
 )
 

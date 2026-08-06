@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -48,10 +49,14 @@ def load_and_process_data(url):
         'ระยะสะสม (กม.)': totals,
         'เป้าหมาย (กม.)': targets,
         'ระยะคงเหลือ (กม.)': remaining
-    })
+    }).fillna(0)
     
-    # คำนวณ % ความคืบหน้า
-    summary_df['เปอร์เซ็นต์ (%)'] = (summary_df['ระยะสะสม (กม.)'] / summary_df['เป้าหมาย (กม.)'] * 100).round(1)
+    # คำนวณ % ความคืบหน้า (พร้อมป้องกันแบ่งด้วยศูนย์/ค่าว่าง)
+    summary_df['เปอร์เซ็นต์ (%)'] = np.where(
+        summary_df['เป้าหมาย (กม.)'] > 0,
+        (summary_df['ระยะสะสม (กม.)'] / summary_df['เป้าหมาย (กม.)'] * 100).round(1),
+        0.0
+    )
     summary_df['สถานะ'] = summary_df['ระยะคงเหลือ (กม.)'].apply(lambda x: '🎯 ทะลุเป้าหมาย' if x <= 0 else '🏃 กำลังวิ่ง')
     
     return summary_df, daily_df
@@ -102,7 +107,6 @@ if sheet_url:
             color = '#d4edda' if 'ทะลุเป้าหมาย' in str(val) else '#fff3cd'
             return f'background-color: {color}'
 
-        # แก้ไขจาก .applymap() เป็น .map() เพื่อรองรับ Pandas เวอร์ชั่นใหม่
         st.dataframe(
             summary_df.style.map(highlight_status, subset=['สถานะ']),
             use_container_width=True
@@ -130,8 +134,10 @@ if sheet_url:
         )
         m_col4.metric("ความคืบหน้า", f"{member_summary['เปอร์เซ็นต์ (%)']}%")
 
-        # Progress bar
-        progress = min(float(member_summary['เปอร์เซ็นต์ (%)']) / 100.0, 1.0)
+        # Progress bar ป้องกันค่า NaN
+        raw_pct = member_summary['เปอร์เซ็นต์ (%)']
+        pct_float = 0.0 if (pd.isna(raw_pct) or np.isinf(raw_pct)) else float(raw_pct)
+        progress = max(0.0, min(pct_float / 100.0, 1.0))
         st.progress(progress)
 
         # ประวัติการวิ่งแต่ละวันของสมาชิก
@@ -140,7 +146,7 @@ if sheet_url:
         # แปลงเป็นตารางวันที่
         daily_melted = member_daily.melt(id_vars=['ชื่อ'], var_name='วันที่', value_name='ระยะทาง (กม.)')
         daily_melted = daily_melted.dropna()
-        daily_melted['ระยะทาง (กม.)'] = pd.to_numeric(daily_melted['ระยะทาง (กม.)'], errors='coerce')
+        daily_melted['ระยะทาง (กม.)'] = pd.to_numeric(daily_melted['ระยะทาง (กม.)'], errors='coerce').fillna(0)
 
         if not daily_melted.empty:
             fig_daily = px.bar(

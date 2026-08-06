@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 # หัวข้อหลัก
-st.title("🏃 Dashboard สะสมระยะวิ่ง (15 ก.ค. - 15 ส.ค. 2569)")
+st.title("🏃 Dashboard สะสมระยะวิ่ง (15 ก.ค. - 15 ส.ค.)")
 st.markdown("---")
 
 st.sidebar.header("⚙️ การเชื่อมต่อข้อมูล")

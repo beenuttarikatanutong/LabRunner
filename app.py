@@ -24,43 +24,20 @@ sheet_url = st.sidebar.text_input(
 def load_and_process_sheet1(url):
     df_raw = pd.read_csv(url, header=None)
     
-    # 1. ค้นหาแถวแบ่งโซนข้อมูล ("ระยะสะสม" หรือ "เป้าหมาย")
-    sep_idx = None
-    for idx, row in df_raw.iterrows():
-        row_str = " ".join(row.dropna().astype(str))
-        if 'ระยะสะสม' in row_str or 'เป้าหมาย' in row_str:
-            sep_idx = idx
-            break
-            
-    if sep_idx is None:
-        sep_idx = 9  # ค่าเริ่มต้นหากหาไม่เจอ
-        
-    # 2. ดึงรายชื่อสมาชิก (ระหว่างแถวที่ 1 ถึงแถวแบ่งโซน)
-    members = df_raw.iloc[1:sep_idx, 1].dropna().astype(str).str.strip().tolist()
-    num_members = len(members)
+    # 1. ล็อกการดึงรายชื่อสมาชิก 8 คนแรกแน่นอน (แถว Index 1 ถึง 8)
+    members = df_raw.iloc[1:9, 1].astype(str).str.strip().tolist()
     
-    # 3. ดึงวันที่ทั้งหมด (แถวที่ 0 ตั้งแต่คอลัมน์ index 2 เป็นต้นไป)
+    # 2. ดึงคอลัมน์วันที่ (แถว Index 0 ตั้งแต่คอลัมน์ Index 2 เป็นต้นไป)
     dates = df_raw.iloc[0, 2:].astype(str).str.strip().tolist()
     
-    # 4. ดึงตารางระยะทางวิ่งรายวัน และรวมระยะทางอัตโนมัติ
-    daily_matrix = df_raw.iloc[1:sep_idx, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
+    # 3. ดึงแมทริกซ์ระยะวิ่งรายวัน 8 คน
+    daily_matrix = df_raw.iloc[1:9, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
     totals = daily_matrix.sum(axis=1).values
     
-    # 5. ดึงเป้าหมายจากโซนล่าง (ใต้แถวแบ่งโซน)
-    raw_targets = df_raw.iloc[sep_idx+1 : sep_idx+1+num_members, 1].values
-    targets = pd.to_numeric(pd.Series(raw_targets), errors='coerce').fillna(0).values
+    # 4. ดึงเป้าหมาย 8 คนจากตารางส่วนล่าง (แถว Index 10 ถึง 17)
+    targets = pd.to_numeric(df_raw.iloc[10:18, 1].values, errors='coerce')
+    targets = np.nan_to_num(targets, 0.0)
     
-    # 6. ป้องกันปัญหาความยาว Array ไม่เท่ากัน (Shapes mismatch)
-    if len(targets) < num_members:
-        targets = np.pad(targets, (0, num_members - len(targets)), 'constant', constant_values=0)
-    elif len(targets) > num_members:
-        targets = targets[:num_members]
-        
-    if len(totals) < num_members:
-        totals = np.pad(totals, (0, num_members - len(totals)), 'constant', constant_values=0)
-    elif len(totals) > num_members:
-        totals = totals[:num_members]
-        
     # จัดทำ Summary DataFrame
     summary_df = pd.DataFrame({
         'ชื่อ': members,
@@ -69,7 +46,7 @@ def load_and_process_sheet1(url):
         'ระยะคงเหลือ (กม.)': np.round(targets - totals, 2)
     })
     
-    # คำนวณเปอร์เซ็นต์ บังคับทศนิยม 2 ตำแหน่ง
+    # คำนวณเปอร์เซ็นต์ทศนิยม 2 ตำแหน่ง
     summary_df['เปอร์เซ็นต์ (%)'] = np.where(
         summary_df['เป้าหมาย (กม.)'] > 0,
         np.round((summary_df['ระยะสะสม (กม.)'] / summary_df['เป้าหมาย (กม.)'] * 100), 2),
@@ -78,7 +55,7 @@ def load_and_process_sheet1(url):
     summary_df['สถานะ'] = summary_df['ระยะคงเหลือ (กม.)'].apply(lambda x: '🎯 ทะลุเป้าหมาย' if x <= 0 else '🏃 กำลังวิ่ง')
     
     # จัดทำ Daily DataFrame
-    daily_df = pd.DataFrame(daily_matrix.values, columns=dates[:daily_matrix.shape[1]])
+    daily_df = pd.DataFrame(daily_matrix.values, columns=dates)
     daily_df.insert(0, 'ชื่อ', members)
     
     return summary_df, daily_df
@@ -149,7 +126,7 @@ if sheet_url:
 
         st.markdown("---")
 
-        # 3. ตารางสรุปภาพรวมรายบุคคล (ทศนิยม 2 ตำแหน่ง)
+        # 3. ตารางสรุปภาพรวมรายบุคคล (แสดงทศนิยม 2 ตำแหน่ง)
         st.subheader("📋 ตารางสรุปภาพรวมรายบุคคล")
         
         def highlight_status(val):

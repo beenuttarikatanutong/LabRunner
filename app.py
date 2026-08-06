@@ -4,11 +4,6 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 
-# ==============================================================================
-# 🔗 ใส่ลิงก์ Google Sheet (CSV) ถาวรตรงนี้
-# ==============================================================================
-DEFAULT_SHEET_URL = "ใส่_LINK_CSV_ของคุณที่นี่"
-"https://docs.google.com/spreadsheets/d/e/2PACX-1vQULOfPDpitOoaGE7sgK9X1S6H4ZIAEVlD_7KnjaBSwxXxK52XKmR9cq4ViPsIuvkrUhkxbOZQDBzu5/pub?gid=949150434&single=true&output=csv"
 st.set_page_config(
     page_title="Dashboard สะสมระยะวิ่ง",
     page_icon="🏃",
@@ -20,8 +15,8 @@ st.markdown("---")
 
 st.sidebar.header("⚙️ การเชื่อมต่อข้อมูล")
 sheet_url = st.sidebar.text_input(
-    "ลิงก์ Google Sheet (CSV):",
-    value=DEFAULT_SHEET_URL,
+    "ใส่ลิงก์ CSV ของ Google Sheet:",
+    value="",
     placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"
 )
 
@@ -29,7 +24,7 @@ sheet_url = st.sidebar.text_input(
 def load_and_process_data(url):
     df_raw = pd.read_csv(url, header=None)
     
-    # ตรวจสอบโครงสร้างตาราง
+    # ตรวจสอบโครงสร้างตาราง (แบบ 2 โซน หรือ แบบตารางเดี่ยว)
     sep_idx = None
     for idx, row in df_raw.iterrows():
         row_str = " ".join(row.dropna().astype(str))
@@ -38,7 +33,7 @@ def load_and_process_data(url):
             break
 
     if sep_idx is not None and sep_idx > 0:
-        # โครงสร้างแบบ 2 โซน
+        # โครงสร้างแบบ 2 โซน (Dynamic Parsing)
         members = df_raw.iloc[1:sep_idx, 1].dropna().astype(str).str.strip().tolist()
         members = [m for m in members if m != '' and m.lower() != 'nan']
         n_members = len(members)
@@ -68,7 +63,7 @@ def load_and_process_data(url):
         daily_df.insert(0, 'ชื่อ', members)
 
     else:
-        # โครงสร้างแบบ ตารางเดี่ยว
+        # โครงสร้างแบบ ตารางเดี่ยว (Single Table)
         df = pd.read_csv(url)
         df.columns = df.columns.str.strip()
 
@@ -96,6 +91,7 @@ def load_and_process_data(url):
 
         daily_df = df[[name_col] + list(date_cols)].rename(columns={name_col: 'ชื่อ'})
 
+    # คำนวณเปอร์เซ็นต์ บังคับใช้ทศนิยม 2 ตำแหน่ง
     summary_df['เปอร์เซ็นต์ (%)'] = np.where(
         summary_df['เป้าหมาย (กม.)'] > 0,
         np.round((summary_df['ระยะสะสม (กม.)'] / summary_df['เป้าหมาย (กม.)'] * 100), 2),
@@ -107,7 +103,7 @@ def load_and_process_data(url):
     
     return summary_df, daily_df
 
-if sheet_url and sheet_url != "ใส่_LINK_CSV_ของคุณที่นี่":
+if sheet_url:
     try:
         summary_df, daily_df = load_and_process_data(sheet_url)
         
@@ -120,7 +116,7 @@ if sheet_url and sheet_url != "ใส่_LINK_CSV_ของคุณที่น
 
         st.markdown("---")
 
-        # 1. กราฟแท่งเปรียบเทียบระยะสะสม vs เป้าหมาย
+        # 1. กราฟแท่งเปรียบเทียบระยะสะสม vs เป้าหมาย (รวมทุกคนในกราฟเดียว)
         st.subheader("📊 การเปรียบเทียบระยะสะสมเทียบกับเป้าหมาย (ทุกคน)")
         fig_bar = go.Figure()
         
@@ -153,7 +149,7 @@ if sheet_url and sheet_url != "ใส่_LINK_CSV_ของคุณที่น
 
         st.markdown("---")
 
-        # 2. กราฟเส้นแสดงพัฒนาการวิ่งรายวัน
+        # 2. กราฟเส้นแสดงพัฒนาการวิ่งรายวัน (รวมทุกคนในกราฟเดียว)
         st.subheader("📈 พัฒนาการวิ่งรายวันรวมของทุกคน")
         
         daily_long = daily_df.melt(id_vars=['ชื่อ'], var_name='วันที่', value_name='ระยะทาง (กม.)')
@@ -210,4 +206,4 @@ if sheet_url and sheet_url != "ใส่_LINK_CSV_ของคุณที่น
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการอ่านข้อมูล: {e}")
 else:
-    st.warning("👈 กรุณาใส่ลิงก์ Google Sheet (CSV) ถาวรในโค้ด หรือใส่ลิงก์ที่ Sidebar เพื่อเริ่มใช้งาน")
+    st.warning("👈 กรุณาใส่ลิงก์ Google Sheet (CSV) ที่ Sidebar ด้านซ้ายมือเพื่อเริ่มใช้งาน")

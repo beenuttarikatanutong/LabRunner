@@ -14,9 +14,14 @@ st.title("🏃 Dashboard สะสมระยะวิ่ง (15 ก.ค. - 15 
 st.markdown("---")
 
 st.sidebar.header("⚙️ การเชื่อมต่อข้อมูล")
+
+# ตั้งค่า Default URL ไว้ที่พารามิเตอร์ value
+# (นำลิงก์ CSV ของ Google Sheet มาใส่แทนที่ https://docs.google.com/... ด้านล่างนี้)
+DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQULOfPDpitOoaGE7sgK9X1S6H4ZIAEVlD_7KnjaBSwxXxK52XKmR9cq4ViPsIuvkrUhkxbOZQDBzu5/pub?gid=949150434&single=true&output=csv"
+
 sheet_url = st.sidebar.text_input(
     "ใส่ลิงก์ CSV ของ Google Sheet:",
-    value="https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv", # ใส่ลิงก์ตรงนี้
+    value=DEFAULT_SHEET_URL,
     placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"
 )
 

@@ -22,24 +22,46 @@ sheet_url = st.sidebar.text_input(
 
 @st.cache_data(ttl=30)
 def load_and_process_sheet1(url):
-    # อ่านไฟล์แบบ Raw Unstructured Data
     df_raw = pd.read_csv(url, header=None)
     
-    # 1. ดึงรายชื่อสมาชิก 8 คน (แถวที่ 2-9 คอลัมน์ index 1)
-    members = df_raw.iloc[1:9, 1].astype(str).str.strip().tolist()
+    # 1. ค้นหาแถวแบ่งโซนข้อมูล ("ระยะสะสม" หรือ "เป้าหมาย")
+    sep_idx = None
+    for idx, row in df_raw.iterrows():
+        row_str = " ".join(row.dropna().astype(str))
+        if 'ระยะสะสม' in row_str or 'เป้าหมาย' in row_str:
+            sep_idx = idx
+            break
+            
+    if sep_idx is None:
+        sep_idx = 9  # ค่าเริ่มต้นหากหาไม่เจอ
+        
+    # 2. ดึงรายชื่อสมาชิก (ระหว่างแถวที่ 1 ถึงแถวแบ่งโซน)
+    members = df_raw.iloc[1:sep_idx, 1].dropna().astype(str).str.strip().tolist()
+    num_members = len(members)
     
-    # 2. ดึงวันที่ทั้งหมด (แถวที่ 0 คอลัมน์ index 2 เป็นต้นไป)
+    # 3. ดึงวันที่ทั้งหมด (แถวที่ 0 ตั้งแต่คอลัมน์ index 2 เป็นต้นไป)
     dates = df_raw.iloc[0, 2:].astype(str).str.strip().tolist()
     
-    # 3. ดึงระยะทางวิ่งรายวัน และรวมระยะทางอัตโนมัติ
-    daily_matrix = df_raw.iloc[1:9, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
+    # 4. ดึงตารางระยะทางวิ่งรายวัน และรวมระยะทางอัตโนมัติ
+    daily_matrix = df_raw.iloc[1:sep_idx, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
     totals = daily_matrix.sum(axis=1).values
     
-    # 4. ดึงเป้าหมายระยะทางจากตารางโซนล่าง (แถวที่ 10-17 คอลัมน์ index 1)
-    targets = pd.to_numeric(df_raw.iloc[10:18, 1].values, errors='coerce')
-    targets = np.nan_to_num(targets, 0.0)
+    # 5. ดึงเป้าหมายจากโซนล่าง (ใต้แถวแบ่งโซน)
+    raw_targets = df_raw.iloc[sep_idx+1 : sep_idx+1+num_members, 1].values
+    targets = pd.to_numeric(pd.Series(raw_targets), errors='coerce').fillna(0).values
     
-    # จัดทำ DataFrame สรุปผล
+    # 6. ป้องกันปัญหาความยาว Array ไม่เท่ากัน (Shapes mismatch)
+    if len(targets) < num_members:
+        targets = np.pad(targets, (0, num_members - len(targets)), 'constant', constant_values=0)
+    elif len(targets) > num_members:
+        targets = targets[:num_members]
+        
+    if len(totals) < num_members:
+        totals = np.pad(totals, (0, num_members - len(totals)), 'constant', constant_values=0)
+    elif len(totals) > num_members:
+        totals = totals[:num_members]
+        
+    # จัดทำ Summary DataFrame
     summary_df = pd.DataFrame({
         'ชื่อ': members,
         'ระยะสะสม (กม.)': np.round(totals, 2),
@@ -55,8 +77,8 @@ def load_and_process_sheet1(url):
     )
     summary_df['สถานะ'] = summary_df['ระยะคงเหลือ (กม.)'].apply(lambda x: '🎯 ทะลุเป้าหมาย' if x <= 0 else '🏃 กำลังวิ่ง')
     
-    # จัดทำ DataFrame ข้อมูลรายวัน
-    daily_df = pd.DataFrame(daily_matrix.values, columns=dates)
+    # จัดทำ Daily DataFrame
+    daily_df = pd.DataFrame(daily_matrix.values, columns=dates[:daily_matrix.shape[1]])
     daily_df.insert(0, 'ชื่อ', members)
     
     return summary_df, daily_df

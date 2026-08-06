@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 # 🔗 ใส่ลิงก์ Google Sheet (CSV) ถาวรตรงนี้
 # ==============================================================================
 DEFAULT_SHEET_URL = "ใส่_LINK_CSV_ของคุณที่นี่"
-https://docs.google.com/spreadsheets/d/e/2PACX-1vQULOfPDpitOoaGE7sgK9X1S6H4ZIAEVlD_7KnjaBSwxXxK52XKmR9cq4ViPsIuvkrUhkxbOZQDBzu5/pub?gid=949150434&single=true&output=csv
+"https://docs.google.com/spreadsheets/d/e/2PACX-1vQULOfPDpitOoaGE7sgK9X1S6H4ZIAEVlD_7KnjaBSwxXxK52XKmR9cq4ViPsIuvkrUhkxbOZQDBzu5/pub?gid=949150434&single=true&output=csv"
 st.set_page_config(
     page_title="Dashboard สะสมระยะวิ่ง",
     page_icon="🏃",

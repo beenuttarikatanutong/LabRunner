@@ -102,8 +102,9 @@ if sheet_url:
             color = '#d4edda' if 'ทะลุเป้าหมาย' in str(val) else '#fff3cd'
             return f'background-color: {color}'
 
+        # แก้ไขจาก .applymap() เป็น .map() เพื่อรองรับ Pandas เวอร์ชั่นใหม่
         st.dataframe(
-            summary_df.style.applymap(highlight_status, subset=['สถานะ']),
+            summary_df.style.map(highlight_status, subset=['สถานะ']),
             use_container_width=True
         )
 
@@ -133,7 +134,7 @@ if sheet_url:
         progress = min(float(member_summary['เปอร์เซ็นต์ (%)']) / 100.0, 1.0)
         st.progress(progress)
 
-        # ประวัติการวิ่งแต่ละวันของสมาชิก (แก้ไขแล้ว)
+        # ประวัติการวิ่งแต่ละวันของสมาชิก
         st.markdown(f"**ประวัติการวิ่งแต่ละวันของ {selected_member}:**")
         
         # แปลงเป็นตารางวันที่

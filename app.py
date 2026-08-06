@@ -24,20 +24,32 @@ sheet_url = st.sidebar.text_input(
 def load_and_process_sheet1(url):
     df_raw = pd.read_csv(url, header=None)
     
-    # 1. ล็อกการดึงรายชื่อสมาชิก 8 คนแรกแน่นอน (แถว Index 1 ถึง 8)
-    members = df_raw.iloc[1:9, 1].astype(str).str.strip().tolist()
+    # 1. ดึงรายชื่อสมาชิก 8 คน (แถว Index 1 ถึง 8)
+    members = df_raw.iloc[1:9, 1].dropna().astype(str).str.strip().tolist()
+    num_members = len(members)
     
     # 2. ดึงคอลัมน์วันที่ (แถว Index 0 ตั้งแต่คอลัมน์ Index 2 เป็นต้นไป)
     dates = df_raw.iloc[0, 2:].astype(str).str.strip().tolist()
     
-    # 3. ดึงแมทริกซ์ระยะวิ่งรายวัน 8 คน
-    daily_matrix = df_raw.iloc[1:9, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
+    # 3. ดึงแมทริกซ์การวิ่งรายวันตามจำนวนสมาชิก
+    daily_matrix = df_raw.iloc[1:1+num_members, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
     totals = daily_matrix.sum(axis=1).values
     
-    # 4. ดึงเป้าหมาย 8 คนจากตารางส่วนล่าง (แถว Index 10 ถึง 17)
-    targets = pd.to_numeric(df_raw.iloc[10:18, 1].values, errors='coerce')
-    targets = np.nan_to_num(targets, 0.0)
+    # 4. ดึงเป้าหมาย + ป้องกันปัญหาสุดตารางโดนตัดแถวว่าง (Padding ให้อยู่ที่ 8 รายการเสมอ)
+    raw_targets = df_raw.iloc[10:10+num_members, 1].values if len(df_raw) >= 10 else []
+    targets = pd.to_numeric(pd.Series(raw_targets), errors='coerce').fillna(0).values
     
+    # เติม 0 ให้อัตโนมัติหากข้อมูลเป้าหมายมาไม่ครบตามจำนวนสมาชิก
+    if len(targets) < num_members:
+        targets = np.pad(targets, (0, num_members - len(targets)), 'constant', constant_values=0)
+    elif len(targets) > num_members:
+        targets = targets[:num_members]
+
+    if len(totals) < num_members:
+        totals = np.pad(totals, (0, num_members - len(totals)), 'constant', constant_values=0)
+    elif len(totals) > num_members:
+        totals = totals[:num_members]
+
     # จัดทำ Summary DataFrame
     summary_df = pd.DataFrame({
         'ชื่อ': members,
@@ -55,7 +67,7 @@ def load_and_process_sheet1(url):
     summary_df['สถานะ'] = summary_df['ระยะคงเหลือ (กม.)'].apply(lambda x: '🎯 ทะลุเป้าหมาย' if x <= 0 else '🏃 กำลังวิ่ง')
     
     # จัดทำ Daily DataFrame
-    daily_df = pd.DataFrame(daily_matrix.values, columns=dates)
+    daily_df = pd.DataFrame(daily_matrix.values, columns=dates[:daily_matrix.shape[1]])
     daily_df.insert(0, 'ชื่อ', members)
     
     return summary_df, daily_df

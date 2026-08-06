@@ -1,0 +1,164 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+
+# ตั้งค่าหน้าเว็บ
+st.set_page_config(
+    page_title="Dashboard สะสมระยะวิ่ง",
+    page_icon="🏃",
+    layout="wide"
+)
+
+# หัวข้อหลัก
+st.title("🏃 Dashboard สะสมระยะวิ่ง (15 ก.ค. - 15 ส.ค.)")
+st.markdown("---")
+
+# ส่วนใส่ลิงก์ Google Sheet หรือ CSV
+DEFAULT_URL = "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv"
+
+st.sidebar.header("⚙️ การเชื่อมต่อข้อมูล")
+sheet_url = st.sidebar.text_input(
+    "ใส่ลิงก์ CSV ของ Google Sheet:",
+    value="",
+    placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"
+)
+
+st.sidebar.info(
+    "💡 **วิธีเอาลิงก์จาก Google Sheets:**\n"
+    "1. เปิด Google Sheet\n"
+    "2. ไปที่ `ไฟล์ (File)` -> `แชร์ (Share)` -> `เผยแพร่ไปยังเว็บ (Publish to web)`\n"
+    "3. เลือกแผ่นงาน และเลือกรูปแบบเป็น `CSV` แล้วคัดลอกลิงก์มาวาง"
+)
+
+# ฟังก์ชันประมวลผลข้อมูล
+@st.cache_data(ttl=60)
+def load_and_process_data(url):
+    df = pd.read_csv(url)
+    
+    # ดึงรายชื่อสมาชิกและวันวิ่ง
+    members = df.iloc[0:8, 1].values
+    daily_df = df.iloc[0:8, 1:].copy()
+    daily_df.rename(columns={daily_df.columns[0]: 'ชื่อ'}, inplace=True)
+    
+    # ดึงระยะสะสม เป้าหมาย และระยะคงเหลือ
+    totals = pd.to_numeric(df.iloc[9:17, 0].values, errors='coerce')
+    targets = pd.to_numeric(df.iloc[9:17, 1].values, errors='coerce')
+    remaining = pd.to_numeric(df.iloc[9:17, 2].values, errors='coerce')
+    
+    summary_df = pd.DataFrame({
+        'ชื่อ': members,
+        'ระยะสะสม (กม.)': totals,
+        'เป้าหมาย (กม.)': targets,
+        'ระยะคงเหลือ (กม.)': remaining
+    })
+    
+    # คำนวณ % ความคืบหน้า
+    summary_df['เปอร์เซ็นต์ (%)'] = (summary_df['ระยะสะสม (กม.)'] / summary_df['เป้าหมาย (กม.)'] * 100).round(1)
+    summary_df['สถานะ'] = summary_df['ระยะคงเหลือ (กม.)'].apply(lambda x: '🎯 ทะลุเป้าหมาย' if x <= 0 else '🏃 กำลังวิ่ง')
+    
+    return summary_df, daily_df
+
+# การแสดงผล
+if sheet_url:
+    try:
+        summary_df, daily_df = load_and_process_data(sheet_url)
+        
+        # 1. Summary Cards (KPI Metrics)
+        total_runners = len(summary_df)
+        completed_runners = (summary_df['ระยะคงเหลือ (กม.)'] <= 0).sum()
+        total_distance = summary_df['ระยะสะสม (กม.)'].sum()
+        total_target = summary_df['เป้าหมาย (กม.)'].sum()
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("👥 สมาชิกทั้งหมด", f"{total_runners} คน")
+        col2.metric("🎉 พิชิตเป้าหมายแล้ว", f"{completed_runners} คน")
+        col3.metric("🛣️ ระยะทางรวมทั้งหมด", f"{total_distance:.2f} กม.")
+        col4.metric("🎯 เป้าหมายรวม", f"{total_target:.2f} กม.")
+
+        st.markdown("---")
+
+        # 2. กราฟเปรียบเทียบระยะสะสม vs เป้าหมาย
+        st.subheader("📊 การเปรียบเทียบระยะสะสมเทียบกับเป้าหมาย")
+        
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=summary_df['ชื่อ'],
+            y=summary_df['ระยะสะสม (กม.)'],
+            name='ระยะสะสม (กม.)',
+            marker_color='#2b5c8f'
+        ))
+        fig.add_trace(go.Bar(
+            x=summary_df['ชื่อ'],
+            y=summary_df['เป้าหมาย (กม.)'],
+            name='เป้าหมาย (กม.)',
+            marker_color='#d9534f',
+            opacity=0.6
+        ))
+        fig.update_layout(barmode='group', xaxis_title="สมาชิก", yaxis_title="ระยะทาง (กม.)")
+        st.plotly_chart(fig, use_container_width=True)
+
+        # 3. ตารางสรุปภาพรวม
+        st.subheader("📋 ตารางสรุปภาพรวมรายบุคคล")
+        
+        def highlight_status(val):
+            color = '#d4edda' if 'ทะลุเป้าหมาย' in str(val) else '#fff3cd'
+            return f'background-color: {color}'
+
+        st.dataframe(
+            summary_df.style.applymap(highlight_status, subset=['สถานะ']),
+            use_container_width=True
+        )
+
+        st.markdown("---")
+
+        # 4. เจาะลึกรายบุคคล (Individual View)
+        st.subheader("👤 รายละเอียดการวิ่งรายบุคคล")
+        selected_member = st.selectbox("เลือกสมาชิกที่ต้องการดูข้อมูล:", summary_df['ชื่อ'].unique())
+
+        member_summary = summary_df[summary_df['ชื่อ'] == selected_member].iloc[0]
+        member_daily = daily_df[daily_df['ชื่อ'] == selected_member].dropna(axis=1, how='all')
+
+        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+        m_col1.metric("ระยะสะสม", f"{member_summary['ระยะสะสม (กม.)']} กม.")
+        m_col2.metric("เป้าหมาย", f"{member_summary['เป้าหมาย (กม.)']} กม.")
+        
+        rem_val = member_summary['ระยะคงเหลือ (กม.)']
+        m_col3.metric(
+            "ระยะคงเหลือ", 
+            f"{0 if rem_val < 0 else rem_val:.2f} กม.",
+            delta=f"เกินเป้า {-rem_val:.2f} กม." if rem_val < 0 else f"เหลือ {rem_val:.2f} กม.",
+            delta_color="normal" if rem_val <= 0 else "inverse"
+        )
+        m_col4.metric("ความคืบหน้า", f"{member_summary['เปอร์เซ็นต์ (%)']}%")
+
+        # Progress bar
+        progress = min(float(member_summary['เปอร์เซ็นต์ (%)']) / 100.0, 1.0)
+        st.progress(progress)
+
+        # ประวัติการวิ่งแต่ละวันของสมาชิก
+        st.write(**ประวัติการวิ่งแต่ละวันของ {selected_member}:**)
+        
+        # แปลงเป็นตารางวันที่
+        daily_melted = member_daily.melt(id_vars=['ชื่อ'], var_name='วันที่', value_name='ระยะทาง (กม.)')
+        daily_melted = daily_melted.dropna()
+        daily_melted['ระยะทาง (กม.)'] = pd.to_numeric(daily_melted['ระยะทาง (กม.)'], errors='coerce')
+
+        if not daily_melted.empty:
+            fig_daily = px.bar(
+                daily_melted, 
+                x='วันที่', 
+                y='ระยะทาง (กม.)', 
+                text='ระยะทาง (กม.)',
+                title=f"ประวัติการวิ่งของ {selected_member}"
+            )
+            fig_daily.update_traces(texttemplate='%{text:.2f} กม.', textposition='outside')
+            st.plotly_chart(fig_daily, use_container_width=True)
+        else:
+            st.info("ยังไม่มีข้อมูลการวิ่งรายวัน")
+
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูล: {e}")
+        st.info("โปรดตรวจสอบว่าลิงก์ Google Sheet ถูกต้องและตั้งค่าให้เผยแพร่เป็น CSV เรียบร้อยแล้ว")
+else:
+    st.warning("👈 กรุณาใส่ลิงก์ Google Sheet (CSV) ที่ Sidebar ด้านซ้ายมือเพื่อเริ่มใช้งาน")

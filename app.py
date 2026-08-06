@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 # หัวข้อหลัก
-st.title("🏃 Dashboard สะสมระยะวิ่ง (15 ก.ค. - 15 ส.ค.)")
+st.title("🏃 Dashboard สะสมระยะวิ่ง (15 ก.ค. - 15 ส.ค. 2569)")
 st.markdown("---")
 
 st.sidebar.header("⚙️ การเชื่อมต่อข้อมูล")
@@ -32,27 +32,34 @@ st.sidebar.info(
 # ฟังก์ชันประมวลผลข้อมูล
 @st.cache_data(ttl=60)
 def load_and_process_data(url):
-    df = pd.read_csv(url)
+    # อ่านไฟล์โดยไม่ใช้ header อัตโนมัติ เพื่อป้องกันการเยื้องของคอลัมน์
+    df = pd.read_csv(url, header=None)
     
-    # 1. กำหนดรายชื่อสมาชิก 8 คนให้ถูกต้อง
+    # รายชื่อสมาชิกทั้ง 8 คนตามลำดับในไฟล์
     members = ["พี่หนู", "บี", "พี่จัน", "พี่หยก", "จ๋า", "แดรงค์", "พี่แป๋ว", "อ้อน"]
     
-    # ดึงตารางระยะทางรายวัน
-    daily_df = df.iloc[0:8, 1:].copy()
-    daily_df.iloc[:, 0] = members
-    daily_df.rename(columns={daily_df.columns[0]: 'ชื่อ'}, inplace=True)
+    # ดึงคอลัมน์วันที่วิ่ง (แถวที่ 0 คอลัมน์ที่ 2 เป็นต้นไป)
+    dates = df.iloc[0, 2:].values
     
-    # 2. ดึงระยะสะสม เป้าหมาย และระยะคงเหลือ (ตำแหน่งแถวที่ 9-16 ในไฟล์)
-    totals = pd.to_numeric(df.iloc[9:17, 0].values, errors='coerce')
-    targets = pd.to_numeric(df.iloc[9:17, 1].values, errors='coerce')
-    remaining = pd.to_numeric(df.iloc[9:17, 2].values, errors='coerce')
+    # ดึงข้อมูลระยะวิ่งรายวันของสมาชิกแต่ละคน (แถวที่ 1 ถึง 8 คอลัมน์ที่ 2 เป็นต้นไป)
+    daily_matrix = df.iloc[1:9, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
     
+    # ดึงเป้าหมายของสมาชิกแต่ละคน (แถวที่ 10 ถึง 17 คอลัมน์ที่ 1)
+    targets = pd.to_numeric(df.iloc[10:18, 1].values, errors='coerce')
+    
+    # คำนวณระยะทางสะสมจริงจากการวิ่งรายวัน
+    totals = daily_matrix.sum(axis=1).values
+    
+    # คำนวณระยะคงเหลือ
+    remaining = targets - totals
+    
+    # สร้าง DataFrame สรุปผล
     summary_df = pd.DataFrame({
         'ชื่อ': members,
         'ระยะสะสม (กม.)': totals,
         'เป้าหมาย (กม.)': targets,
         'ระยะคงเหลือ (กม.)': remaining
-    }).fillna(0)
+    })
     
     # คำนวณ % ความคืบหน้า
     summary_df['เปอร์เซ็นต์ (%)'] = np.where(
@@ -61,6 +68,10 @@ def load_and_process_data(url):
         0.0
     )
     summary_df['สถานะ'] = summary_df['ระยะคงเหลือ (กม.)'].apply(lambda x: '🎯 ทะลุเป้าหมาย' if x <= 0 else '🏃 กำลังวิ่ง')
+    
+    # สร้าง DataFrame สำหรับประวัติรายวัน
+    daily_df = pd.DataFrame(daily_matrix.values, columns=dates)
+    daily_df.insert(0, 'ชื่อ', members)
     
     return summary_df, daily_df
 
@@ -122,11 +133,11 @@ if sheet_url:
         selected_member = st.selectbox("เลือกสมาชิกที่ต้องการดูข้อมูล:", summary_df['ชื่อ'].unique())
 
         member_summary = summary_df[summary_df['ชื่อ'] == selected_member].iloc[0]
-        member_daily = daily_df[daily_df['ชื่อ'] == selected_member].dropna(axis=1, how='all')
+        member_daily = daily_df[daily_df['ชื่อ'] == selected_member]
 
         m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-        m_col1.metric("ระยะสะสม", f"{member_summary['ระยะสะสม (กม.)']} กม.")
-        m_col2.metric("เป้าหมาย", f"{member_summary['เป้าหมาย (กม.)']} กม.")
+        m_col1.metric("ระยะสะสม", f"{member_summary['ระยะสะสม (กม.)']:.2f} กม.")
+        m_col2.metric("เป้าหมาย", f"{member_summary['เป้าหมาย (กม.)']:.2f} กม.")
         
         rem_val = member_summary['ระยะคงเหลือ (กม.)']
         m_col3.metric(
@@ -146,10 +157,8 @@ if sheet_url:
         # ประวัติการวิ่งแต่ละวันของสมาชิก
         st.markdown(f"**ประวัติการวิ่งแต่ละวันของ {selected_member}:**")
         
-        # แปลงเป็นตารางวันที่
         daily_melted = member_daily.melt(id_vars=['ชื่อ'], var_name='วันที่', value_name='ระยะทาง (กม.)')
-        daily_melted = daily_melted.dropna()
-        daily_melted['ระยะทาง (กม.)'] = pd.to_numeric(daily_melted['ระยะทาง (กม.)'], errors='coerce').fillna(0)
+        daily_melted = daily_melted[daily_melted['ระยะทาง (กม.)'] > 0]
 
         if not daily_melted.empty:
             fig_daily = px.bar(

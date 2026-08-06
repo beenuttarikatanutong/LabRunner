@@ -4,14 +4,12 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 
-# ตั้งค่าหน้าเว็บ
 st.set_page_config(
     page_title="Dashboard สะสมระยะวิ่ง",
     page_icon="🏃",
     layout="wide"
 )
 
-# หัวข้อหลัก
 st.title("🏃 Dashboard สะสมระยะวิ่ง (15 ก.ค. - 15 ส.ค.)")
 st.markdown("---")
 
@@ -22,173 +20,101 @@ sheet_url = st.sidebar.text_input(
     placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"
 )
 
-st.sidebar.info(
-    "💡 **วิธีเอาลิงก์จาก Google Sheets:**\n"
-    "1. เปิด Google Sheet\n"
-    "2. ไปที่ `ไฟล์ (File)` -> `แชร์ (Share)` -> `เผยแพร่ไปยังเว็บ (Publish to web)`\n"
-    "3. เลือกแผ่นงาน และเลือกรูปแบบเป็น `CSV` แล้วคัดลอกลิงก์มาวาง"
-)
-
-# ฟังก์ชันประมวลผลข้อมูลแบบค้นหาชื่ออัตโนมัติ
 @st.cache_data(ttl=60)
 def load_and_process_data(url):
-    # อ่านข้อมูลดิบทั้งหมดจาก Google Sheet
     df_raw = pd.read_csv(url, header=None)
     
-    # รายชื่อสมาชิกทั้ง 8 คน
+    # 8 รายชื่อตามลำดับใน Google Sheet
     members = ["พี่หนู", "บี", "พี่จัน", "พี่หยก", "จ๋า", "แดรงค์", "พี่แป๋ว", "อ้อน"]
     
-    # ค้นหาคอลัมน์ที่เป็นวันที่ (แถวที่ 0 ตั้งแต่คอลัมน์ที่ 2 เป็นต้นไป)
+    # ดึงคอลัมน์วันที่
     dates = df_raw.iloc[0, 2:].values
     
-    summary_list = []
-    daily_records = []
+    # ดึงตารางรายวัน (แถว 1 ถึง 8)
+    daily_matrix = df_raw.iloc[1:9, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
     
-    for member in members:
-        # 1. ค้นหาแถวที่มีชื่อสมาชิกในโซนบันทึกรายวัน (คอลัมน์ที่ 1)
-        daily_row_idx = df_raw[df_raw[1] == member].index
-        
-        if len(daily_row_idx) > 0:
-            r_idx = daily_row_idx[0]
-            # ดึงการวิ่งรายวัน
-            daily_vals = pd.to_numeric(df_raw.iloc[r_idx, 2:], errors='coerce').fillna(0)
-            total_dist = float(daily_vals.sum())
-            daily_records.append([member] + list(daily_vals.values))
-        else:
-            total_dist = 0.0
-            daily_records.append([member] + [0.0]*len(dates))
-            
-        # 2. ค้นหาแถวในโซนล่าง (เป้าหมาย / ระยะคงเหลือ)
-        # โซนล่างตำแหน่งเป้าหมายจะอยู่ถัดจากแถว "เป้าหมาย" (แถวที่ 9)
-        # แม็พตามลำดับสมาชิกในโซนสรุป
-        member_pos = members.index(member)
-        target_row_idx = 10 + member_pos  # แถวสรุปของสมาชิกคนนั้น
-        
-        try:
-            target_val = float(pd.to_numeric(df_raw.iloc[target_row_idx, 1], errors='coerce'))
-            if np.isnan(target_val):
-                target_val = 0.0
-        except:
-            target_val = 0.0
-            
-        remaining_val = target_val - total_dist
-        
-        summary_list.append({
-            'ชื่อ': member,
-            'ระยะสะสม (กม.)': round(total_dist, 2),
-            'เป้าหมาย (กม.)': round(target_val, 2),
-            'ระยะคงเหลือ (กม.)': round(remaining_val, 2)
-        })
-        
-    summary_df = pd.DataFrame(summary_list)
+    # คำนวณระยะทางสะสมรวมจากวันวิ่งจริง
+    totals = daily_matrix.sum(axis=1).values
     
-    # คำนวณ % ความคืบหน้า
+    # ดึงเป้าหมายจากตารางด้านล่าง (แถว 10 ถึง 17 คอลัมน์ index 1)
+    targets = pd.to_numeric(df_raw.iloc[10:18, 1].values, errors='coerce')
+    targets = np.nan_to_num(targets, 0.0)
+    
+    # คำนวณระยะคงเหลือ
+    remaining = targets - totals
+    
+    summary_df = pd.DataFrame({
+        'ชื่อ': members,
+        'ระยะสะสม (กม.)': np.round(totals, 2),
+        'เป้าหมาย (กม.)': np.round(targets, 2),
+        'ระยะคงเหลือ (กม.)': np.round(remaining, 2)
+    })
+    
     summary_df['เปอร์เซ็นต์ (%)'] = np.where(
         summary_df['เป้าหมาย (กม.)'] > 0,
-        (summary_df['ระยะสะสม (กม.)'] / summary_df['เป้าหมาย (กม.)'] * 100).round(1),
+        np.round((summary_df['ระยะสะสม (กม.)'] / summary_df['เป้าหมาย (กม.)'] * 100), 1),
         0.0
     )
     summary_df['สถานะ'] = summary_df['ระยะคงเหลือ (กม.)'].apply(lambda x: '🎯 ทะลุเป้าหมาย' if x <= 0 else '🏃 กำลังวิ่ง')
     
-    # สร้างตารางประวัติรายวัน
-    daily_df = pd.DataFrame(daily_records, columns=['ชื่อ'] + list(dates))
+    daily_df = pd.DataFrame(daily_matrix.values, columns=dates)
+    daily_df.insert(0, 'ชื่อ', members)
     
     return summary_df, daily_df
 
-# การแสดงผล
 if sheet_url:
     try:
         summary_df, daily_df = load_and_process_data(sheet_url)
         
-        # 1. Summary Cards (KPI Metrics)
-        total_runners = len(summary_df)
-        completed_runners = (summary_df['ระยะคงเหลือ (กม.)'] <= 0).sum()
-        total_distance = summary_df['ระยะสะสม (กม.)'].sum()
-        total_target = summary_df['เป้าหมาย (กม.)'].sum()
-
+        # Metric Cards
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("👥 สมาชิกทั้งหมด", f"{total_runners} คน")
-        col2.metric("🎉 พิชิตเป้าหมายแล้ว", f"{completed_runners} คน")
-        col3.metric("🛣️ ระยะทางรวมทั้งหมด", f"{total_distance:.2f} กม.")
-        col4.metric("🎯 เป้าหมายรวม", f"{total_target:.2f} กม.")
+        col1.metric("👥 สมาชิกทั้งหมด", f"{len(summary_df)} คน")
+        col2.metric("🎉 พิชิตเป้าหมายแล้ว", f"{(summary_df['ระยะคงเหลือ (กม.)'] <= 0).sum()} คน")
+        col3.metric("🛣️ ระยะทางรวมทั้งหมด", f"{summary_df['ระยะสะสม (กม.)'].sum():.2f} กม.")
+        col4.metric("🎯 เป้าหมายรวม", f"{summary_df['เป้าหมาย (กม.)'].sum():.2f} กม.")
 
         st.markdown("---")
 
-        # 2. กราฟเปรียบเทียบระยะสะสม vs เป้าหมาย
+        # Chart
         st.subheader("📊 การเปรียบเทียบระยะสะสมเทียบกับเป้าหมาย")
-        
         fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=summary_df['ชื่อ'],
-            y=summary_df['ระยะสะสม (กม.)'],
-            name='ระยะสะสม (กม.)',
-            marker_color='#2b5c8f'
-        ))
-        fig.add_trace(go.Bar(
-            x=summary_df['ชื่อ'],
-            y=summary_df['เป้าหมาย (กม.)'],
-            name='เป้าหมาย (กม.)',
-            marker_color='#d9534f',
-            opacity=0.6
-        ))
+        fig.add_trace(go.Bar(x=summary_df['ชื่อ'], y=summary_df['ระยะสะสม (กม.)'], name='ระยะสะสม (กม.)', marker_color='#2b5c8f'))
+        fig.add_trace(go.Bar(x=summary_df['ชื่อ'], y=summary_df['เป้าหมาย (กม.)'], name='เป้าหมาย (กม.)', marker_color='#d9534f', opacity=0.6))
         fig.update_layout(barmode='group', xaxis_title="สมาชิก", yaxis_title="ระยะทาง (กม.)")
         st.plotly_chart(fig, use_container_width=True)
 
-        # 3. ตารางสรุปภาพรวม
+        # Summary Table
         st.subheader("📋 ตารางสรุปภาพรวมรายบุคคล")
-        
         def highlight_status(val):
             color = '#d4edda' if 'ทะลุเป้าหมาย' in str(val) else '#fff3cd'
             return f'background-color: {color}'
-
-        st.dataframe(
-            summary_df.style.map(highlight_status, subset=['สถานะ']),
-            use_container_width=True
-        )
+            
+        st.dataframe(summary_df.style.map(highlight_status, subset=['สถานะ']), use_container_width=True)
 
         st.markdown("---")
 
-        # 4. เจาะลึกรายบุคคล (Individual View)
+        # Member View
         st.subheader("👤 รายละเอียดการวิ่งรายบุคคล")
         selected_member = st.selectbox("เลือกสมาชิกที่ต้องการดูข้อมูล:", summary_df['ชื่อ'].unique())
-
         member_summary = summary_df[summary_df['ชื่อ'] == selected_member].iloc[0]
         member_daily = daily_df[daily_df['ชื่อ'] == selected_member]
 
-        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-        m_col1.metric("ระยะสะสม", f"{member_summary['ระยะสะสม (กม.)']:.2f} กม.")
-        m_col2.metric("เป้าหมาย", f"{member_summary['เป้าหมาย (กม.)']:.2f} กม.")
-        
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("ระยะสะสม", f"{member_summary['ระยะสะสม (กม.)']:.2f} กม.")
+        m2.metric("เป้าหมาย", f"{member_summary['เป้าหมาย (กม.)']:.2f} กม.")
         rem_val = member_summary['ระยะคงเหลือ (กม.)']
-        m_col3.metric(
-            "ระยะคงเหลือ", 
-            f"{0 if rem_val < 0 else rem_val:.2f} กม.",
-            delta=f"เกินเป้า {-rem_val:.2f} กม." if rem_val < 0 else f"เหลือ {rem_val:.2f} กม.",
-            delta_color="normal" if rem_val <= 0 else "inverse"
-        )
-        m_col4.metric("ความคืบหน้า", f"{member_summary['เปอร์เซ็นต์ (%)']}%")
+        m3.metric("ระยะคงเหลือ", f"{0 if rem_val < 0 else rem_val:.2f} กม.", delta=f"เกินเป้า {-rem_val:.2f} กม." if rem_val < 0 else f"เหลือ {rem_val:.2f} กม.", delta_color="normal" if rem_val <= 0 else "inverse")
+        m4.metric("ความคืบหน้า", f"{member_summary['เปอร์เซ็นต์ (%)']}%")
 
-        # Progress bar
-        raw_pct = member_summary['เปอร์เซ็นต์ (%)']
-        pct_float = 0.0 if (pd.isna(raw_pct) or np.isinf(raw_pct)) else float(raw_pct)
-        progress = max(0.0, min(pct_float / 100.0, 1.0))
-        st.progress(progress)
+        st.progress(max(0.0, min(float(member_summary['เปอร์เซ็นต์ (%)']) / 100.0, 1.0)))
 
-        # ประวัติการวิ่งแต่ละวันของสมาชิก
-        st.markdown(f"**ประวัติการวิ่งแต่ละวันของ {selected_member}:**")
-        
+        # Daily Chart
         daily_melted = member_daily.melt(id_vars=['ชื่อ'], var_name='วันที่', value_name='ระยะทาง (กม.)')
         daily_melted['ระยะทาง (กม.)'] = pd.to_numeric(daily_melted['ระยะทาง (กม.)'], errors='coerce').fillna(0)
         daily_melted = daily_melted[daily_melted['ระยะทาง (กม.)'] > 0]
 
         if not daily_melted.empty:
-            fig_daily = px.bar(
-                daily_melted, 
-                x='วันที่', 
-                y='ระยะทาง (กม.)', 
-                text='ระยะทาง (กม.)',
-                title=f"ประวัติการวิ่งของ {selected_member}"
-            )
+            fig_daily = px.bar(daily_melted, x='วันที่', y='ระยะทาง (กม.)', text='ระยะทาง (กม.)', title=f"ประวัติการวิ่งของ {selected_member}")
             fig_daily.update_traces(texttemplate='%{text:.2f} กม.', textposition='outside')
             st.plotly_chart(fig_daily, use_container_width=True)
         else:
@@ -196,6 +122,5 @@ if sheet_url:
 
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูล: {e}")
-        st.info("โปรดตรวจสอบว่าลิงก์ Google Sheet ถูกต้องและตั้งค่าให้เผยแพร่เป็น CSV เรียบร้อยแล้ว")
 else:
     st.warning("👈 กรุณาใส่ลิงก์ Google Sheet (CSV) ที่ Sidebar ด้านซ้ายมือเพื่อเริ่มใช้งาน")

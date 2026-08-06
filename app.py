@@ -10,7 +10,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🏃 Dashboard สะสมระยะวิ่ง (15 ก.ค. - 15 ส.ค. 2569)")
+st.title("🏃 Dashboard สะสมระยะวิ่ง (15 ก.ค. - 15 ส.ค.)")
 st.markdown("---")
 
 st.sidebar.header("⚙️ การเชื่อมต่อข้อมูล")
@@ -20,21 +20,28 @@ sheet_url = st.sidebar.text_input(
     placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"
 )
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=30)
 def load_and_process_data(url):
+    # อ่านไฟล์ทั้งหมดแบบไม่กำหนด Header
     df_raw = pd.read_csv(url, header=None)
     
-    # ตรวจสอบโครงสร้างตาราง (ตารางเดิมแบบ 2 โซน หรือ ตารางแบบปกติในชีต 2)
-    has_dual_block = df_raw.apply(lambda row: row.astype(str).str.contains('ระยะสะสม|เป้าหมาย').any(), axis=1).any()
-    
-    if has_dual_block:
-        # โครงสร้างตารางแบบเดิม
+    # 1. ตรวจสอบว่าเป็นโครงสร้างตารางแยก 2 โซน (แบบชีตเดิม) หรือไม่
+    is_2block = False
+    if df_raw.shape[0] >= 18:
+        cell_check = str(df_raw.iloc[9, 1])
+        if 'เป้าหมาย' in cell_check or 'ระยะสะสม' in str(df_raw.iloc[9, 0]):
+            is_2block = True
+
+    if is_2block:
+        # ดึงรายชื่อสมาชิก 8 คน
         members = df_raw.iloc[1:9, 1].astype(str).str.strip().tolist()
         dates = df_raw.iloc[0, 2:].astype(str).str.strip().tolist()
         
+        # คำนวณระยะวิ่งรายวันและระยะสะสม
         daily_matrix = df_raw.iloc[1:9, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
         totals = daily_matrix.sum(axis=1).values
         
+        # ดึงเป้าหมายจากโซนล่าง
         targets = pd.to_numeric(df_raw.iloc[10:18, 1].values, errors='coerce')
         targets = np.nan_to_num(targets, 0.0)
         
@@ -46,26 +53,42 @@ def load_and_process_data(url):
         })
         daily_df = pd.DataFrame(daily_matrix.values, columns=dates)
         daily_df.insert(0, 'ชื่อ', members)
+        
     else:
-        # โครงสร้างตารางใหม่ (ชีต 2)
-        df = pd.read_csv(url).dropna(how='all')
+        # 2. กรณีเป็นโครงสร้างตารางเดียว (แบบชีต 2)
+        header_row_idx = 0
+        for idx, row in df_raw.iterrows():
+            row_str = " ".join(row.dropna().astype(str))
+            if any(k in row_str for k in ['ชื่อ', 'Name', 'สมาชิก', 'เป้าหมาย', 'Target']):
+                header_row_idx = idx
+                break
+                
+        df = pd.read_csv(url, header=header_row_idx).dropna(how='all')
+        df = df.dropna(how='all', axis=1)
         df.columns = [str(c).strip() for c in df.columns]
         
+        # ค้นหาคอลัมน์ชื่อ
         name_col = df.columns[0]
-        
-        # หาคอลัมน์เป้าหมายอย่างปลอดภัย
+        for c in df.columns:
+            if any(k in str(c).lower() for k in ['ชื่อ', 'name', 'สมาชิก']):
+                name_col = c
+                break
+                
+        # ค้นหาคอลัมน์เป้าหมาย
         target_col = None
         for c in df.columns:
-            if any(k in c.lower() for k in ['เป้า', 'target', 'goal']):
+            if any(k in str(c).lower() for k in ['เป้า', 'target', 'goal']):
                 target_col = c
                 break
-        if target_col is None and len(df.columns) > 1:
-            target_col = df.columns[1]
+                
+        # แยกคอลัมน์ที่เป็นวันที่วิ่ง
+        excl = ['รวม', 'สะสม', 'เป้า', 'คงเหลือ', '%', 'สถานะ', str(name_col)]
+        if target_col:
+            excl.append(str(target_col))
             
-        # หาคอลัมน์วันที่วิ่ง
-        exclude_kw = ['รวม', 'สะสม', 'เป้า', 'คงเหลือ', 'เปอร์เซ็นต์', '%', 'สถานะ', str(name_col), str(target_col)]
-        date_cols = [c for c in df.columns if not any(k in c.lower() for k in exclude_kw)]
+        date_cols = [c for c in df.columns if not any(k in str(c).lower() for k in excl)]
         
+        # แปลงข้อมูลตัวเลข
         for c in date_cols:
             df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
             
@@ -127,7 +150,7 @@ if sheet_url:
 
         st.markdown("---")
 
-        # Member View
+        # Individual View
         st.subheader("👤 รายละเอียดการวิ่งรายบุคคล")
         selected_member = st.selectbox("เลือกสมาชิกที่ต้องการดูข้อมูล:", summary_df['ชื่อ'].unique())
         member_summary = summary_df[summary_df['ชื่อ'] == selected_member].iloc[0]

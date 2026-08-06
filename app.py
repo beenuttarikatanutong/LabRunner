@@ -17,75 +17,75 @@ st.sidebar.header("⚙️ การเชื่อมต่อข้อมูล
 sheet_url = st.sidebar.text_input(
     "ใส่ลิงก์ CSV ของ Google Sheet:",
     value="",
-    placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv&gid=..."
+    placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"
 )
 
 @st.cache_data(ttl=60)
 def load_and_process_data(url):
     df_raw = pd.read_csv(url, header=None)
     
-    # ตรวจสอบว่าเป็นตารางซ้อน 2 โซน (โครงสร้างเดิม) หรือ ตารางแถวเดียว (ชีต 2)
+    # ตรวจสอบโครงสร้างตาราง (ตารางเดิมแบบ 2 โซน หรือ ตารางแบบปกติในชีต 2)
     has_dual_block = df_raw.apply(lambda row: row.astype(str).str.contains('ระยะสะสม|เป้าหมาย').any(), axis=1).any()
     
-    members = ["พี่หนู", "บี", "พี่จัน", "พี่หยก", "จ๋า", "แดรงค์", "พี่แป๋ว", "อ้อน"]
-    
     if has_dual_block:
-        # --- ประมวลผลสำหรับตาราง 2 โซน (ชีตเดิม) ---
-        dates = df_raw.iloc[0, 2:].values
+        # โครงสร้างตารางแบบเดิม
+        members = df_raw.iloc[1:9, 1].astype(str).str.strip().tolist()
+        dates = df_raw.iloc[0, 2:].astype(str).str.strip().tolist()
+        
         daily_matrix = df_raw.iloc[1:9, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
         totals = daily_matrix.sum(axis=1).values
         
         targets = pd.to_numeric(df_raw.iloc[10:18, 1].values, errors='coerce')
         targets = np.nan_to_num(targets, 0.0)
         
-        remaining = targets - totals
-        
         summary_df = pd.DataFrame({
             'ชื่อ': members,
             'ระยะสะสม (กม.)': np.round(totals, 2),
             'เป้าหมาย (กม.)': np.round(targets, 2),
-            'ระยะคงเหลือ (กม.)': np.round(remaining, 2)
+            'ระยะคงเหลือ (กม.)': np.round(targets - totals, 2)
         })
         daily_df = pd.DataFrame(daily_matrix.values, columns=dates)
         daily_df.insert(0, 'ชื่อ', members)
-        
     else:
-        # --- ประมวลผลสำหรับตารางแถวเดียว (ชีต 2 ใหม่) ---
-        # อ่านแบบมี Header
-        df = pd.read_csv(url)
+        # โครงสร้างตารางใหม่ (ชีต 2)
+        df = pd.read_csv(url).dropna(how='all')
         df.columns = [str(c).strip() for c in df.columns]
         
         name_col = df.columns[0]
         
-        # หาคอลัมน์เป้าหมาย
-        target_cols = [c for c in df.columns if 'เป้า' in c or 'Target' in c.lower()]
-        if target_cols:
-            target_col = target_cols[0]
-        else:
-            target_col = df.columns[1] # สันนิษฐานว่าคือคอลัมน์ที่ 2
+        # หาคอลัมน์เป้าหมายอย่างปลอดภัย
+        target_col = None
+        for c in df.columns:
+            if any(k in c.lower() for k in ['เป้า', 'target', 'goal']):
+                target_col = c
+                break
+        if target_col is None and len(df.columns) > 1:
+            target_col = df.columns[1]
             
-        # คอลัมน์ที่ไม่ใช่ชื่อและไม่ใช่มุมสรุป/เป้าหมาย คือ คอลัมน์วันที่วิ่ง
-        exclude_keywords = ['รวม', 'สะสม', 'เป้า', 'คงเหลือ', 'เปอร์เซ็นต์', '%', 'สถานะ', str(name_col)]
-        date_cols = [c for c in df.columns if not any(k in c.lower() for k in exclude_keywords)]
+        # หาคอลัมน์วันที่วิ่ง
+        exclude_kw = ['รวม', 'สะสม', 'เป้า', 'คงเหลือ', 'เปอร์เซ็นต์', '%', 'สถานะ', str(name_col), str(target_col)]
+        date_cols = [c for c in df.columns if not any(k in c.lower() for k in exclude_kw)]
         
-        # แปลงข้อมูลเป็นตัวเลข
         for c in date_cols:
             df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
             
-        targets = pd.to_numeric(df[target_col], errors='coerce').fillna(0).values
-        totals = df[date_cols].sum(axis=1).values
-        remaining = targets - totals
+        if target_col and target_col in df.columns:
+            targets = pd.to_numeric(df[target_col], errors='coerce').fillna(0).values
+        else:
+            targets = np.zeros(len(df))
+            
+        totals = df[date_cols].sum(axis=1).values if date_cols else np.zeros(len(df))
         
         summary_df = pd.DataFrame({
             'ชื่อ': df[name_col].astype(str).str.strip(),
             'ระยะสะสม (กม.)': np.round(totals, 2),
             'เป้าหมาย (กม.)': np.round(targets, 2),
-            'ระยะคงเหลือ (กม.)': np.round(remaining, 2)
+            'ระยะคงเหลือ (กม.)': np.round(targets - totals, 2)
         })
         
         daily_df = df[[name_col] + date_cols].copy()
         daily_df.rename(columns={name_col: 'ชื่อ'}, inplace=True)
-        
+
     # คำนวณเปอร์เซ็นต์และสถานะ
     summary_df['เปอร์เซ็นต์ (%)'] = np.where(
         summary_df['เป้าหมาย (กม.)'] > 0,
@@ -109,7 +109,7 @@ if sheet_url:
 
         st.markdown("---")
 
-        # Chart
+        # Bar Chart
         st.subheader("📊 การเปรียบเทียบระยะสะสมเทียบกับเป้าหมาย")
         fig = go.Figure()
         fig.add_trace(go.Bar(x=summary_df['ชื่อ'], y=summary_df['ระยะสะสม (กม.)'], name='ระยะสะสม (กม.)', marker_color='#2b5c8f'))
@@ -127,7 +127,7 @@ if sheet_url:
 
         st.markdown("---")
 
-        # Individual View
+        # Member View
         st.subheader("👤 รายละเอียดการวิ่งรายบุคคล")
         selected_member = st.selectbox("เลือกสมาชิกที่ต้องการดูข้อมูล:", summary_df['ชื่อ'].unique())
         member_summary = summary_df[summary_df['ชื่อ'] == selected_member].iloc[0]
@@ -155,6 +155,6 @@ if sheet_url:
             st.info("ยังไม่มีข้อมูลการวิ่งรายวัน")
 
     except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการโหลดข้อมูล: {e}")
+        st.error(f"เกิดข้อผิดพลาดในการอ่านข้อมูล: {e}")
 else:
     st.warning("👈 กรุณาใส่ลิงก์ Google Sheet (CSV) ที่ Sidebar ด้านซ้ายมือเพื่อเริ่มใช้งาน")

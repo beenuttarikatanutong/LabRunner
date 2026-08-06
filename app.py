@@ -5,7 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 st.set_page_config(
-    page_title="Dashboard สะสมระยะวิ่ง (ชีต 1)",
+    page_title="Dashboard สะสมระยะวิ่ง",
     page_icon="🏃",
     layout="wide"
 )
@@ -20,72 +20,99 @@ sheet_url = st.sidebar.text_input(
     placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"
 )
 
-@st.cache_data(ttl=10)
-def load_and_process_sheet1(url):
+@st.cache_data(ttl=30)
+def load_and_process_data(url):
     df_raw = pd.read_csv(url, header=None)
     
-    # 1. ค้นหาแถวแบ่งโซนข้อมูล ("ระยะสะสม" หรือ "เป้าหมาย") แบบ Dynamic
-    sep_idx = None
-    for idx, row in df_raw.iterrows():
-        row_str = " ".join(row.dropna().astype(str))
-        if 'ระยะสะสม' in row_str or 'เป้าหมาย' in row_str:
-            sep_idx = idx
-            break
+    # 1. ตรวจสอบว่าตารางเป็นโครงสร้างแบบ 2 โซนหรือไม่
+    is_2block = False
+    if df_raw.shape[0] >= 18:
+        cell_check = str(df_raw.iloc[9, 1])
+        if 'เป้าหมาย' in cell_check or 'ระยะสะสม' in str(df_raw.iloc[9, 0]):
+            is_2block = True
+
+    if is_2block:
+        members = df_raw.iloc[1:9, 1].astype(str).str.strip().tolist()
+        dates = df_raw.iloc[0, 2:].astype(str).str.strip().tolist()
+        
+        daily_matrix = df_raw.iloc[1:9, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
+        totals = daily_matrix.sum(axis=1).values
+        
+        targets = pd.to_numeric(df_raw.iloc[10:18, 1].values, errors='coerce')
+        targets = np.nan_to_num(targets, 0.0)
+        
+        summary_df = pd.DataFrame({
+            'ชื่อ': members,
+            'ระยะสะสม (กม.)': np.round(totals, 2),
+            'เป้าหมาย (กม.)': np.round(targets, 2),
+            'ระยะคงเหลือ (กม.)': np.round(targets - totals, 2)
+        })
+        daily_df = pd.DataFrame(daily_matrix.values, columns=dates)
+        daily_df.insert(0, 'ชื่อ', members)
+        
+    else:
+        header_row_idx = 0
+        for idx, row in df_raw.iterrows():
+            row_str = " ".join(row.dropna().astype(str))
+            if any(k in row_str for k in ['ชื่อ', 'Name', 'สมาชิก', 'เป้าหมาย', 'Target']):
+                header_row_idx = idx
+                break
+                
+        df = pd.read_csv(url, header=header_row_idx).dropna(how='all')
+        df = df.dropna(how='all', axis=1)
+        df.columns = [str(c).strip() for c in df.columns]
+        
+        name_col = df.columns[0]
+        for c in df.columns:
+            if any(k in str(c).lower() for k in ['ชื่อ', 'name', 'สมาชิก']):
+                name_col = c
+                break
+                
+        target_col = None
+        for c in df.columns:
+            if any(k in str(c).lower() for k in ['เป้า', 'target', 'goal']):
+                target_col = c
+                break
+                
+        excl = ['รวม', 'สะสม', 'เป้า', 'คงเหลือ', '%', 'สถานะ', str(name_col)]
+        if target_col:
+            excl.append(str(target_col))
             
-    if sep_idx is None:
-        sep_idx = len(df_raw) // 2
+        date_cols = [c for c in df.columns if not any(k in str(c).lower() for k in excl)]
+        
+        for c in date_cols:
+            df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
+            
+        if target_col and target_col in df.columns:
+            targets = pd.to_numeric(df[target_col], errors='coerce').fillna(0).values
+        else:
+            targets = np.zeros(len(df))
+            
+        totals = df[date_cols].sum(axis=1).values if date_cols else np.zeros(len(df))
+        
+        summary_df = pd.DataFrame({
+            'ชื่อ': df[name_col].astype(str).str.strip(),
+            'ระยะสะสม (กม.)': np.round(totals, 2),
+            'เป้าหมาย (กม.)': np.round(targets, 2),
+            'ระยะคงเหลือ (กม.)': np.round(targets - totals, 2)
+        })
+        
+        daily_df = df[[name_col] + date_cols].copy()
+        daily_df.rename(columns={name_col: 'ชื่อ'}, inplace=True)
 
-    # 2. ดึงรายชื่อสมาชิกที่มีอยู่จริง (ตั้งแต่แถวที่ 1 ถึงก่อนแถวแบ่งโซน)
-    members = df_raw.iloc[1:sep_idx, 1].dropna().astype(str).str.strip().tolist()
-    members = [m for m in members if m != '' and m.lower() != 'nan']
-    n_members = len(members)
-
-    # 3. ดึงวันที่ทั้งหมดจากแถวแรก (คอลัมน์ Index 2 เป็นต้นไป)
-    header_row = df_raw.iloc[0, 2:].dropna().astype(str).str.strip().tolist()
-    dates = [d for d in header_row if d != '' and d.lower() != 'nan']
-    n_dates = len(dates)
-
-    # 4. ดึงตารางระยะวิ่งรายวันเฉพาะคอลัมน์ที่มีวันที่ และคำนวณระยะสะสมจริง
-    daily_matrix = df_raw.iloc[1:1+n_members, 2:2+n_dates].apply(pd.to_numeric, errors='coerce').fillna(0)
-    totals = daily_matrix.sum(axis=1).values
-
-    # 5. ดึงเป้าหมายจากตารางส่วนล่างตามจำนวนสมาชิกที่มีจริง
-    raw_targets = df_raw.iloc[sep_idx+1 : sep_idx+1+n_members, 1].values
-    targets = pd.to_numeric(pd.Series(raw_targets), errors='coerce').fillna(0).values
-
-    # ปรับขนาด Array เป้าหมายให้ตรงกับจำนวนสมาชิกเสมอ
-    if len(targets) < n_members:
-        targets = np.pad(targets, (0, n_members - len(targets)), 'constant', constant_values=0)
-    elif len(targets) > n_members:
-        targets = targets[:n_members]
-
-    # จัดทำ Summary DataFrame
-    summary_df = pd.DataFrame({
-        'ชื่อ': members,
-        'ระยะสะสม (กม.)': np.round(totals, 2),
-        'เป้าหมาย (กม.)': np.round(targets, 2),
-        'ระยะคงเหลือ (กม.)': np.round(targets - totals, 2)
-    })
-    
-    # คำนวณเปอร์เซ็นต์
+    # คำนวณเปอร์เซ็นต์ บังคับใช้ทศนิยม 2 ตำแหน่ง
     summary_df['เปอร์เซ็นต์ (%)'] = np.where(
         summary_df['เป้าหมาย (กม.)'] > 0,
         np.round((summary_df['ระยะสะสม (กม.)'] / summary_df['เป้าหมาย (กม.)'] * 100), 2),
         0.00
     )
-    summary_df['สถานะ'] = summary_df['ระยะคงเหลือ (กม.)'].apply(
-        lambda x: '🎯 ทะลุเป้าหมาย' if x <= 0 else '🏃 กำลังวิ่ง'
-    )
-    
-    # จัดทำ Daily DataFrame
-    daily_df = pd.DataFrame(daily_matrix.values, columns=dates)
-    daily_df.insert(0, 'ชื่อ', members)
+    summary_df['สถานะ'] = summary_df['ระยะคงเหลือ (กม.)'].apply(lambda x: '🎯 ทะลุเป้าหมาย' if x <= 0 else '🏃 กำลังวิ่ง')
     
     return summary_df, daily_df
 
 if sheet_url:
     try:
-        summary_df, daily_df = load_and_process_sheet1(sheet_url)
+        summary_df, daily_df = load_and_process_data(sheet_url)
         
         # Metric Cards
         col1, col2, col3, col4 = st.columns(4)
@@ -96,8 +123,8 @@ if sheet_url:
 
         st.markdown("---")
 
-        # 1. กราฟแท่งเปรียบเทียบระยะสะสม vs เป้าหมาย
-        st.subheader("📊 การเปรียบเทียบระยะสะสมเทียบกับเป้าหมาย")
+        # 1. กราฟเปรียบเทียบระยะสะสม vs เป้าหมาย (รวมทุกคนในกราฟเดียว)
+        st.subheader("📊 การเปรียบเทียบระยะสะสมเทียบกับเป้าหมาย (ทุกคน)")
         fig_bar = go.Figure()
         
         fig_bar.add_trace(go.Bar(
@@ -129,8 +156,8 @@ if sheet_url:
 
         st.markdown("---")
 
-        # 2. กราฟเส้นพัฒนาการวิ่งรายวัน
-        st.subheader("📈 พัฒนาการวิ่งรายวันรวม")
+        # 2. กราฟเส้นแสดงพัฒนาการวิ่งรายวัน (รวมทุกคนในกราฟเดียว)
+        st.subheader("📈 พัฒนาการวิ่งรายวันรวมของทุกคน")
         
         daily_long = daily_df.melt(id_vars=['ชื่อ'], var_name='วันที่', value_name='ระยะทาง (กม.)')
         daily_long['ระยะทาง (กม.)'] = pd.to_numeric(daily_long['ระยะทาง (กม.)'], errors='coerce').fillna(0)
@@ -149,13 +176,14 @@ if sheet_url:
 
         st.markdown("---")
 
-        # 3. ตารางสรุปภาพรวม
+        # ตารางสรุปภาพรวมรายบุคคล
         st.subheader("📋 ตารางสรุปภาพรวมรายบุคคล")
         
         def highlight_status(val):
             color = '#d4edda' if 'ทะลุเป้าหมาย' in str(val) else '#fff3cd'
             return f'background-color: {color}'
 
+        # ฟอร์แมตตัวเลขให้แสดงทศนิยม 2 ตำแหน่งทั้งหมดในตาราง
         formatted_df = summary_df.copy()
         for col in ['ระยะสะสม (กม.)', 'เป้าหมาย (กม.)', 'ระยะคงเหลือ (กม.)', 'เปอร์เซ็นต์ (%)']:
             formatted_df[col] = formatted_df[col].apply(lambda x: f"{x:.2f}")
@@ -164,10 +192,11 @@ if sheet_url:
 
         st.markdown("---")
 
-        # 4. รายละเอียดรายบุคคล
+        # เจาะลึกรายบุคคล
         st.subheader("👤 รายละเอียดการวิ่งรายบุคคล")
         selected_member = st.selectbox("เลือกสมาชิกที่ต้องการดูข้อมูล:", summary_df['ชื่อ'].unique())
         member_summary = summary_df[summary_df['ชื่อ'] == selected_member].iloc[0]
+        member_daily = daily_df[daily_df['ชื่อ'] == selected_member]
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("ระยะสะสม", f"{member_summary['ระยะสะสม (กม.)']:.2f} กม.")
@@ -184,6 +213,6 @@ if sheet_url:
         st.progress(max(0.0, min(float(member_summary['เปอร์เซ็นต์ (%)']) / 100.0, 1.0)))
 
     except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการดึงข้อมูลจาก ชีต 1: {e}")
+        st.error(f"เกิดข้อผิดพลาดในการอ่านข้อมูล: {e}")
 else:
     st.warning("👈 กรุณาใส่ลิงก์ Google Sheet (CSV) ที่ Sidebar ด้านซ้ายมือเพื่อเริ่มใช้งาน")

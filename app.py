@@ -29,37 +29,58 @@ st.sidebar.info(
     "3. เลือกแผ่นงาน และเลือกรูปแบบเป็น `CSV` แล้วคัดลอกลิงก์มาวาง"
 )
 
-# ฟังก์ชันประมวลผลข้อมูล
+# ฟังก์ชันประมวลผลข้อมูลแบบค้นหาชื่ออัตโนมัติ
 @st.cache_data(ttl=60)
 def load_and_process_data(url):
-    # อ่านไฟล์โดยไม่ใช้ header อัตโนมัติ เพื่อป้องกันการเยื้องของคอลัมน์
-    df = pd.read_csv(url, header=None)
+    # อ่านข้อมูลดิบทั้งหมดจาก Google Sheet
+    df_raw = pd.read_csv(url, header=None)
     
-    # รายชื่อสมาชิกทั้ง 8 คนตามลำดับในไฟล์
+    # รายชื่อสมาชิกทั้ง 8 คน
     members = ["พี่หนู", "บี", "พี่จัน", "พี่หยก", "จ๋า", "แดรงค์", "พี่แป๋ว", "อ้อน"]
     
-    # ดึงคอลัมน์วันที่วิ่ง (แถวที่ 0 คอลัมน์ที่ 2 เป็นต้นไป)
-    dates = df.iloc[0, 2:].values
+    # ค้นหาคอลัมน์ที่เป็นวันที่ (แถวที่ 0 ตั้งแต่คอลัมน์ที่ 2 เป็นต้นไป)
+    dates = df_raw.iloc[0, 2:].values
     
-    # ดึงข้อมูลระยะวิ่งรายวันของสมาชิกแต่ละคน (แถวที่ 1 ถึง 8 คอลัมน์ที่ 2 เป็นต้นไป)
-    daily_matrix = df.iloc[1:9, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
+    summary_list = []
+    daily_records = []
     
-    # ดึงเป้าหมายของสมาชิกแต่ละคน (แถวที่ 10 ถึง 17 คอลัมน์ที่ 1)
-    targets = pd.to_numeric(df.iloc[10:18, 1].values, errors='coerce')
-    
-    # คำนวณระยะทางสะสมจริงจากการวิ่งรายวัน
-    totals = daily_matrix.sum(axis=1).values
-    
-    # คำนวณระยะคงเหลือ
-    remaining = targets - totals
-    
-    # สร้าง DataFrame สรุปผล
-    summary_df = pd.DataFrame({
-        'ชื่อ': members,
-        'ระยะสะสม (กม.)': totals,
-        'เป้าหมาย (กม.)': targets,
-        'ระยะคงเหลือ (กม.)': remaining
-    })
+    for member in members:
+        # 1. ค้นหาแถวที่มีชื่อสมาชิกในโซนบันทึกรายวัน (คอลัมน์ที่ 1)
+        daily_row_idx = df_raw[df_raw[1] == member].index
+        
+        if len(daily_row_idx) > 0:
+            r_idx = daily_row_idx[0]
+            # ดึงการวิ่งรายวัน
+            daily_vals = pd.to_numeric(df_raw.iloc[r_idx, 2:], errors='coerce').fillna(0)
+            total_dist = float(daily_vals.sum())
+            daily_records.append([member] + list(daily_vals.values))
+        else:
+            total_dist = 0.0
+            daily_records.append([member] + [0.0]*len(dates))
+            
+        # 2. ค้นหาแถวในโซนล่าง (เป้าหมาย / ระยะคงเหลือ)
+        # โซนล่างตำแหน่งเป้าหมายจะอยู่ถัดจากแถว "เป้าหมาย" (แถวที่ 9)
+        # แม็พตามลำดับสมาชิกในโซนสรุป
+        member_pos = members.index(member)
+        target_row_idx = 10 + member_pos  # แถวสรุปของสมาชิกคนนั้น
+        
+        try:
+            target_val = float(pd.to_numeric(df_raw.iloc[target_row_idx, 1], errors='coerce'))
+            if np.isnan(target_val):
+                target_val = 0.0
+        except:
+            target_val = 0.0
+            
+        remaining_val = target_val - total_dist
+        
+        summary_list.append({
+            'ชื่อ': member,
+            'ระยะสะสม (กม.)': round(total_dist, 2),
+            'เป้าหมาย (กม.)': round(target_val, 2),
+            'ระยะคงเหลือ (กม.)': round(remaining_val, 2)
+        })
+        
+    summary_df = pd.DataFrame(summary_list)
     
     # คำนวณ % ความคืบหน้า
     summary_df['เปอร์เซ็นต์ (%)'] = np.where(
@@ -69,9 +90,8 @@ def load_and_process_data(url):
     )
     summary_df['สถานะ'] = summary_df['ระยะคงเหลือ (กม.)'].apply(lambda x: '🎯 ทะลุเป้าหมาย' if x <= 0 else '🏃 กำลังวิ่ง')
     
-    # สร้าง DataFrame สำหรับประวัติรายวัน
-    daily_df = pd.DataFrame(daily_matrix.values, columns=dates)
-    daily_df.insert(0, 'ชื่อ', members)
+    # สร้างตารางประวัติรายวัน
+    daily_df = pd.DataFrame(daily_records, columns=['ชื่อ'] + list(dates))
     
     return summary_df, daily_df
 
@@ -158,6 +178,7 @@ if sheet_url:
         st.markdown(f"**ประวัติการวิ่งแต่ละวันของ {selected_member}:**")
         
         daily_melted = member_daily.melt(id_vars=['ชื่อ'], var_name='วันที่', value_name='ระยะทาง (กม.)')
+        daily_melted['ระยะทาง (กม.)'] = pd.to_numeric(daily_melted['ระยะทาง (กม.)'], errors='coerce').fillna(0)
         daily_melted = daily_melted[daily_melted['ระยะทาง (กม.)'] > 0]
 
         if not daily_melted.empty:

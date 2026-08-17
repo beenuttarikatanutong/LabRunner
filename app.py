@@ -15,6 +15,8 @@ st.markdown("---")
 
 st.sidebar.header("⚙️ การเชื่อมต่อข้อมูล")
 
+# ตั้งค่า Default URL ไว้ที่พารามิเตอร์ value
+# (นำลิงก์ CSV ของ Google Sheet มาใส่แทนที่ https://docs.google.com/... ด้านล่างนี้)
 DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQULOfPDpitOoaGE7sgK9X1S6H4ZIAEVlD_7KnjaBSwxXxK52XKmR9cq4ViPsIuvkrUhkxbOZQDBzu5/pub?gid=949150434&single=true&output=csv"
 
 sheet_url = st.sidebar.text_input(
@@ -22,7 +24,6 @@ sheet_url = st.sidebar.text_input(
     value=DEFAULT_SHEET_URL,
     placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"
 )
-
 
 @st.cache_data(ttl=30)
 def load_and_process_data(url):
@@ -36,137 +37,65 @@ def load_and_process_data(url):
             is_2block = True
 
     if is_2block:
-
-        # ⭐ แก้ไข: ดึงชื่อสมาชิกเดิมทั้ง 8 คน
         members = df_raw.iloc[1:9, 1].astype(str).str.strip().tolist()
-
-        # ⭐ แก้ไข: สร้างลำดับสมาชิกใหม่เป็น 1-8
-        member_numbers = list(range(1, 9))
-
         dates = df_raw.iloc[0, 2:].astype(str).str.strip().tolist()
         
-        daily_matrix = df_raw.iloc[1:9, 2:].apply(
-            pd.to_numeric,
-            errors='coerce'
-        ).fillna(0)
-
+        daily_matrix = df_raw.iloc[1:9, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
         totals = daily_matrix.sum(axis=1).values
         
-        targets = pd.to_numeric(
-            df_raw.iloc[10:18, 1].values,
-            errors='coerce'
-        )
-
+        targets = pd.to_numeric(df_raw.iloc[10:18, 1].values, errors='coerce')
         targets = np.nan_to_num(targets, 0.0)
         
-        # ⭐ แก้ไข: เพิ่มคอลัมน์ "ลำดับ"
         summary_df = pd.DataFrame({
-            'ลำดับ': member_numbers,
             'ชื่อ': members,
             'ระยะสะสม (กม.)': np.round(totals, 2),
             'เป้าหมาย (กม.)': np.round(targets, 2),
             'ระยะคงเหลือ (กม.)': np.round(targets - totals, 2)
         })
-
-        daily_df = pd.DataFrame(
-            daily_matrix.values,
-            columns=dates
-        )
-
+        daily_df = pd.DataFrame(daily_matrix.values, columns=dates)
         daily_df.insert(0, 'ชื่อ', members)
         
     else:
-
         header_row_idx = 0
-
         for idx, row in df_raw.iterrows():
             row_str = " ".join(row.dropna().astype(str))
-
-            if any(
-                k in row_str
-                for k in ['ชื่อ', 'Name', 'สมาชิก', 'เป้าหมาย', 'Target']
-            ):
+            if any(k in row_str for k in ['ชื่อ', 'Name', 'สมาชิก', 'เป้าหมาย', 'Target']):
                 header_row_idx = idx
                 break
                 
-        df = pd.read_csv(
-            url,
-            header=header_row_idx
-        ).dropna(how='all')
-
+        df = pd.read_csv(url, header=header_row_idx).dropna(how='all')
         df = df.dropna(how='all', axis=1)
-
-        df.columns = [
-            str(c).strip()
-            for c in df.columns
-        ]
+        df.columns = [str(c).strip() for c in df.columns]
         
         name_col = df.columns[0]
-
         for c in df.columns:
-            if any(
-                k in str(c).lower()
-                for k in ['ชื่อ', 'name', 'สมาชิก']
-            ):
+            if any(k in str(c).lower() for k in ['ชื่อ', 'name', 'สมาชิก']):
                 name_col = c
                 break
                 
         target_col = None
-
         for c in df.columns:
-            if any(
-                k in str(c).lower()
-                for k in ['เป้า', 'target', 'goal']
-            ):
+            if any(k in str(c).lower() for k in ['เป้า', 'target', 'goal']):
                 target_col = c
                 break
                 
-        excl = [
-            'รวม',
-            'สะสม',
-            'เป้า',
-            'คงเหลือ',
-            '%',
-            'สถานะ',
-            str(name_col)
-        ]
-
+        excl = ['รวม', 'สะสม', 'เป้า', 'คงเหลือ', '%', 'สถานะ', str(name_col)]
         if target_col:
             excl.append(str(target_col))
             
-        date_cols = [
-            c for c in df.columns
-            if not any(
-                k in str(c).lower()
-                for k in excl
-            )
-        ]
+        date_cols = [c for c in df.columns if not any(k in str(c).lower() for k in excl)]
         
         for c in date_cols:
-            df[c] = pd.to_numeric(
-                df[c],
-                errors='coerce'
-            ).fillna(0)
+            df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
             
         if target_col and target_col in df.columns:
-            targets = pd.to_numeric(
-                df[target_col],
-                errors='coerce'
-            ).fillna(0).values
+            targets = pd.to_numeric(df[target_col], errors='coerce').fillna(0).values
         else:
             targets = np.zeros(len(df))
             
-        totals = (
-            df[date_cols].sum(axis=1).values
-            if date_cols
-            else np.zeros(len(df))
-        )
+        totals = df[date_cols].sum(axis=1).values if date_cols else np.zeros(len(df))
         
-        # ⭐ เพิ่มลำดับ 1-8 ในกรณีโครงสร้างปกติด้วย
-        member_numbers = list(range(1, len(df) + 1))
-
         summary_df = pd.DataFrame({
-            'ลำดับ': member_numbers,
             'ชื่อ': df[name_col].astype(str).str.strip(),
             'ระยะสะสม (กม.)': np.round(totals, 2),
             'เป้าหมาย (กม.)': np.round(targets, 2),
@@ -174,50 +103,27 @@ def load_and_process_data(url):
         })
         
         daily_df = df[[name_col] + date_cols].copy()
+        daily_df.rename(columns={name_col: 'ชื่อ'}, inplace=True)
 
-        daily_df.rename(
-            columns={name_col: 'ชื่อ'},
-            inplace=True
-        )
-
-    # คำนวณเปอร์เซ็นต์
+    # คำนวณเปอร์เซ็นต์ บังคับใช้ทศนิยม 2 ตำแหน่ง
     summary_df['เปอร์เซ็นต์ (%)'] = np.where(
         summary_df['เป้าหมาย (กม.)'] > 0,
-        np.round(
-            (
-                summary_df['ระยะสะสม (กม.)']
-                / summary_df['เป้าหมาย (กม.)']
-                * 100
-            ),
-            2
-        ),
+        np.round((summary_df['ระยะสะสม (กม.)'] / summary_df['เป้าหมาย (กม.)'] * 100), 2),
         0.00
     )
 
-    summary_df['สถานะ'] = summary_df[
-        'ระยะคงเหลือ (กม.)'
-    ].apply(
-        lambda x:
-        '🎯 ทะลุเป้าหมาย'
-        if x <= 0
-        else '🏃 กำลังวิ่ง'
+    summary_df['สถานะ'] = summary_df['ระยะคงเหลือ (กม.)'].apply(
+        lambda x: '🎯 ทะลุเป้าหมาย' if x <= 0 else '🏃 กำลังวิ่ง'
     )
     
     return summary_df, daily_df
 
 
 if sheet_url:
-
     try:
-
-        summary_df, daily_df = load_and_process_data(
-            sheet_url
-        )
+        summary_df, daily_df = load_and_process_data(sheet_url)
         
-        # =========================
         # Metric Cards
-        # =========================
-
         col1, col2, col3, col4 = st.columns(4)
 
         col1.metric(
@@ -242,10 +148,7 @@ if sheet_url:
 
         st.markdown("---")
 
-        # =========================
-        # 1. กราฟเปรียบเทียบ
-        # =========================
-
+        # 1. กราฟเปรียบเทียบระยะสะสม vs เป้าหมาย
         st.subheader(
             "📊 การเปรียบเทียบระยะสะสมเทียบกับเป้าหมาย (ทุกคน)"
         )
@@ -258,9 +161,7 @@ if sheet_url:
                 y=summary_df['ระยะสะสม (กม.)'],
                 name='ระยะสะสม (กม.)',
                 marker_color='#2b5c8f',
-                text=summary_df[
-                    'ระยะสะสม (กม.)'
-                ].map('{:.2f}'.format),
+                text=summary_df['ระยะสะสม (กม.)'].map('{:.2f}'.format),
                 textposition='outside'
             )
         )
@@ -272,9 +173,7 @@ if sheet_url:
                 name='เป้าหมาย (กม.)',
                 marker_color='#d9534f',
                 opacity=0.6,
-                text=summary_df[
-                    'เป้าหมาย (กม.)'
-                ].map('{:.2f}'.format),
+                text=summary_df['เป้าหมาย (กม.)'].map('{:.2f}'.format),
                 textposition='outside'
             )
         )
@@ -293,10 +192,7 @@ if sheet_url:
 
         st.markdown("---")
 
-        # =========================
-        # 2. กราฟเส้นรายวัน
-        # =========================
-
+        # 2. กราฟเส้นแสดงพัฒนาการวิ่งรายวัน
         st.subheader(
             "📈 พัฒนาการวิ่งรายวันรวมของทุกคน"
         )
@@ -322,8 +218,7 @@ if sheet_url:
         )
 
         fig_line.update_traces(
-            hovertemplate=
-            '<b>%{x}</b><br>วิ่งได้: %{y:.2f} กม.'
+            hovertemplate='<b>%{x}</b><br>วิ่งได้: %{y:.2f} กม.'
         )
 
         fig_line.update_layout(
@@ -338,24 +233,20 @@ if sheet_url:
 
         st.markdown("---")
 
-        # =========================
-        # ตารางสรุป
-        # =========================
-
+        # ตารางสรุปภาพรวมรายบุคคล
         st.subheader(
             "📋 ตารางสรุปภาพรวมรายบุคคล"
         )
         
         def highlight_status(val):
-
             color = (
                 '#d4edda'
                 if 'ทะลุเป้าหมาย' in str(val)
                 else '#fff3cd'
             )
-
             return f'background-color: {color}'
 
+        # ฟอร์แมตตัวเลขให้แสดงทศนิยม 2 ตำแหน่งทั้งหมดในตาราง
         formatted_df = summary_df.copy()
 
         for col in [
@@ -364,7 +255,6 @@ if sheet_url:
             'ระยะคงเหลือ (กม.)',
             'เปอร์เซ็นต์ (%)'
         ]:
-
             formatted_df[col] = formatted_df[col].apply(
                 lambda x: f"{x:.2f}"
             )
@@ -379,10 +269,7 @@ if sheet_url:
 
         st.markdown("---")
 
-        # =========================
-        # รายละเอียดรายบุคคล
-        # =========================
-
+        # เจาะลึกรายบุคคล
         st.subheader(
             "👤 รายละเอียดการวิ่งรายบุคคล"
         )
@@ -412,9 +299,7 @@ if sheet_url:
             f"{member_summary['เป้าหมาย (กม.)']:.2f} กม."
         )
 
-        rem_val = member_summary[
-            'ระยะคงเหลือ (กม.)'
-        ]
+        rem_val = member_summary['ระยะคงเหลือ (กม.)']
 
         m3.metric(
             "ระยะคงเหลือ",
@@ -424,11 +309,9 @@ if sheet_url:
                 if rem_val < 0
                 else f"เหลือ {rem_val:.2f} กม."
             ),
-            delta_color=(
-                "normal"
-                if rem_val <= 0
-                else "inverse"
-            )
+            delta_color="normal"
+            if rem_val <= 0
+            else "inverse"
         )
 
         m4.metric(
@@ -449,13 +332,11 @@ if sheet_url:
         )
 
     except Exception as e:
-
         st.error(
             f"เกิดข้อผิดพลาดในการอ่านข้อมูล: {e}"
         )
 
 else:
-
     st.warning(
         "👈 กรุณาใส่ลิงก์ Google Sheet (CSV) "
         "ที่ Sidebar ด้านซ้ายมือเพื่อเริ่มใช้งาน"

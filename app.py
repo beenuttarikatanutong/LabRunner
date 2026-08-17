@@ -38,9 +38,7 @@ def load_and_process_data(url):
 
    if is_2block:
       members = df_raw.iloc[1:9, 1].astype(str).str.strip().tolist()
-
-      member_numbers = list(range(1, 9))
-
+    
     dates = df_raw.iloc[0, 2:].astype(str).str.strip().tolist()
     
     daily_matrix = df_raw.iloc[1:9, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)

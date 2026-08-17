@@ -370,10 +370,12 @@ if sheet_url:
             )
 
         st.dataframe(
-            formatted_df.style.map(
-                highlight_status,
-                subset=['สถานะ']
-            ),
+           formatted_df.style
+               .map(
+                   highlight_status,
+                   subset=['สถานะ']
+               )
+               .hide(axis='index'),
             use_container_width=True
         )
 

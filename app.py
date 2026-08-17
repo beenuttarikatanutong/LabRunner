@@ -36,24 +36,31 @@ def load_and_process_data(url):
         if 'เป้าหมาย' in cell_check or 'ระยะสะสม' in str(df_raw.iloc[9, 0]):
             is_2block = True
 
-    if is_2block:
-        members = df_raw.iloc[1:9, 1].astype(str).str.strip().tolist()
-        dates = df_raw.iloc[0, 2:].astype(str).str.strip().tolist()
-        
-        daily_matrix = df_raw.iloc[1:9, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
-        totals = daily_matrix.sum(axis=1).values
-        
-        targets = pd.to_numeric(df_raw.iloc[10:18, 1].values, errors='coerce')
-        targets = np.nan_to_num(targets, 0.0)
-        
-        summary_df = pd.DataFrame({
-            'ชื่อ': members,
-            'ระยะสะสม (กม.)': np.round(totals, 2),
-            'เป้าหมาย (กม.)': np.round(targets, 2),
-            'ระยะคงเหลือ (กม.)': np.round(targets - totals, 2)
-        })
-        daily_df = pd.DataFrame(daily_matrix.values, columns=dates)
-        daily_df.insert(0, 'ชื่อ', members)
+   if is_2block:
+    # ดึงชื่อสมาชิกเดิมทั้ง 8 คนจาก Google Sheet
+    members = df_raw.iloc[1:9, 1].astype(str).str.strip().tolist()
+
+    # กำหนดลำดับใหม่เป็น 1-8
+    member_numbers = list(range(1, 9))
+
+    dates = df_raw.iloc[0, 2:].astype(str).str.strip().tolist()
+    
+    daily_matrix = df_raw.iloc[1:9, 2:].apply(pd.to_numeric, errors='coerce').fillna(0)
+    totals = daily_matrix.sum(axis=1).values
+    
+    targets = pd.to_numeric(df_raw.iloc[10:18, 1].values, errors='coerce')
+    targets = np.nan_to_num(targets, 0.0)
+    
+    summary_df = pd.DataFrame({
+        'ลำดับ': member_numbers,
+        'ชื่อ': members,
+        'ระยะสะสม (กม.)': np.round(totals, 2),
+        'เป้าหมาย (กม.)': np.round(targets, 2),
+        'ระยะคงเหลือ (กม.)': np.round(targets - totals, 2)
+    })
+    
+    daily_df = pd.DataFrame(daily_matrix.values, columns=dates)
+    daily_df.insert(0, 'ชื่อ', members)
         
     else:
         header_row_idx = 0

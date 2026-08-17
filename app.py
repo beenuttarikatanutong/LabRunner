@@ -37,11 +37,9 @@ def load_and_process_data(url):
             is_2block = True
 
    if is_2block:
-    # ดึงชื่อสมาชิกเดิมทั้ง 8 คนจาก Google Sheet
-    members = df_raw.iloc[1:9, 1].astype(str).str.strip().tolist()
+      members = df_raw.iloc[1:9, 1].astype(str).str.strip().tolist()
 
-    # กำหนดลำดับใหม่เป็น 1-8
-    member_numbers = list(range(1, 9))
+      member_numbers = list(range(1, 9))
 
     dates = df_raw.iloc[0, 2:].astype(str).str.strip().tolist()
     

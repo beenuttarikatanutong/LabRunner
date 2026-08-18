@@ -10,7 +10,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🏃 Dashboard สะสมระยะวิ่ง (20 ส.ค.-20 ต.ค. 2569)")
+st.title("🏃 Dashboard สะสมระยะวิ่ง (20 ส.ค.-20 พ.ย. 2569)")
 st.markdown("---")
 
 st.sidebar.header("⚙️ การเชื่อมต่อข้อมูล")

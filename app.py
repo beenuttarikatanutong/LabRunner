@@ -17,7 +17,7 @@ st.sidebar.header("⚙️ การเชื่อมต่อข้อมูล
 
 # ตั้งค่า Default URL ไว้ที่พารามิเตอร์ value
 # (นำลิงก์ CSV ของ Google Sheet มาใส่แทนที่ https://docs.google.com/... ด้านล่างนี้)
-DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQULOfPDpitOoaGE7sgK9X1S6H4ZIAEVlD_7KnjaBSwxXxK52XKmR9cq4ViPsIuvkrUhkxbOZQDBzu5/pub?gid=949150434&single=true&output=csv"
+DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQULOfPDpitOoaGE7sgK9X1S6H4ZIAEVlD_7KnjaBSwxXxK52XKmR9cq4ViPsIuvkrUhkxbOZQDBzu5/pub?output=csv"
 
 sheet_url = st.sidebar.text_input(
     "ใส่ลิงก์ CSV ของ Google Sheet:",
@@ -122,28 +122,139 @@ def load_and_process_data(url):
 if sheet_url:
     try:
         summary_df, daily_df = load_and_process_data(sheet_url)
+        # =========================
+        # FILTER ข้อมูลสมาชิก
+        # =========================
+        st.sidebar.markdown("---")
+        st.sidebar.header("🔎 กรองข้อมูลสมาชิก")
+
+        search_name = st.sidebar.text_input("🔍 ค้นหาชื่อสมาชิก")
+
+        progress_filter = st.sidebar.selectbox(
+            "🏆 ระดับความสำเร็จ",
+            [
+                "ทั้งหมด",
+                "🥇 พิชิต 100K แล้ว",
+                "🔥 ใกล้ถึงเป้าหมาย 75-99.99K",
+                "💪 กำลังมา 50-74.99K",
+                "🏃 เริ่มต้น 25-49.99K",
+                "🌱 ต่ำกว่า 25K"
+            ]
+        )
+
+        status_filter = st.sidebar.selectbox(
+            "📌 สถานะ",
+            ["ทั้งหมด", "🎯 ทะลุเป้าหมาย", "🏃 กำลังวิ่ง"]
+        )
+
+        member_options = summary_df["ชื่อ"].dropna().unique().tolist()
+        member_filter = st.sidebar.multiselect(
+            "👤 เลือกสมาชิก",
+            options=member_options,
+            default=member_options
+        )
+
+        max_distance_value = float(
+            max(summary_df["ระยะสะสม (กม.)"].max(), 100)
+        )
+        min_distance, max_distance = st.sidebar.slider(
+            "🛣️ ช่วงระยะสะสม (กม.)",
+            0.0,
+            max_distance_value,
+            (0.0, max_distance_value),
+            step=0.5
+        )
+
+        max_percent_value = float(
+            max(summary_df["เปอร์เซ็นต์ (%)"].max(), 100)
+        )
+        min_percent, max_percent = st.sidebar.slider(
+            "📊 ความคืบหน้า (%)",
+            0.0,
+            max_percent_value,
+            (0.0, max_percent_value),
+            step=1.0
+        )
+
+        filtered_summary_df = summary_df.copy()
+        filtered_summary_df = filtered_summary_df[
+            filtered_summary_df["ชื่อ"].isin(member_filter)
+        ]
+
+        if search_name:
+            filtered_summary_df = filtered_summary_df[
+                filtered_summary_df["ชื่อ"].astype(str).str.contains(
+                    search_name, case=False, na=False
+                )
+            ]
+
+        if status_filter != "ทั้งหมด":
+            filtered_summary_df = filtered_summary_df[
+                filtered_summary_df["สถานะ"] == status_filter
+            ]
+
+        filtered_summary_df = filtered_summary_df[
+            filtered_summary_df["ระยะสะสม (กม.)"].between(
+                min_distance, max_distance
+            )
+        ]
+
+        filtered_summary_df = filtered_summary_df[
+            filtered_summary_df["เปอร์เซ็นต์ (%)"].between(
+                min_percent, max_percent
+            )
+        ]
+
+        if progress_filter == "🥇 พิชิต 100K แล้ว":
+            filtered_summary_df = filtered_summary_df[
+                filtered_summary_df["ระยะสะสม (กม.)"] >= 100
+            ]
+        elif progress_filter == "🔥 ใกล้ถึงเป้าหมาย 75-99.99K":
+            filtered_summary_df = filtered_summary_df[
+                filtered_summary_df["ระยะสะสม (กม.)"].between(75, 99.999999)
+            ]
+        elif progress_filter == "💪 กำลังมา 50-74.99K":
+            filtered_summary_df = filtered_summary_df[
+                filtered_summary_df["ระยะสะสม (กม.)"].between(50, 74.999999)
+            ]
+        elif progress_filter == "🏃 เริ่มต้น 25-49.99K":
+            filtered_summary_df = filtered_summary_df[
+                filtered_summary_df["ระยะสะสม (กม.)"].between(25, 49.999999)
+            ]
+        elif progress_filter == "🌱 ต่ำกว่า 25K":
+            filtered_summary_df = filtered_summary_df[
+                filtered_summary_df["ระยะสะสม (กม.)"] < 25
+            ]
+
+        filtered_daily_df = daily_df[
+            daily_df["ชื่อ"].isin(filtered_summary_df["ชื่อ"])
+        ].copy()
+
+        st.caption(
+            f"แสดงข้อมูล {len(filtered_summary_df)} จาก {len(summary_df)} คน"
+        )
         
         # Metric Cards
         col1, col2, col3, col4 = st.columns(4)
 
         col1.metric(
             "👥 สมาชิกทั้งหมด",
-            f"{len(summary_df)} คน"
+            f"{len(filtered_summary_df)} คน"
         )
 
         col2.metric(
             "🎉 พิชิตเป้าหมายแล้ว",
-            f"{(summary_df['ระยะคงเหลือ (กม.)'] <= 0).sum()} คน"
+            f"{(filtered_summary_df['ระยะคงเหลือ (กม.)'] <= 0).sum()} คน"
         )
 
         col3.metric(
             "🛣️ ระยะทางรวมทั้งหมด",
-            f"{summary_df['ระยะสะสม (กม.)'].sum():.2f} กม."
+            f"{filtered_summary_df['ระยะสะสม (กม.)'].sum():.2f} กม."
         )
 
         col4.metric(
             "🎯 เป้าหมายรวม",
-            f"{summary_df['เป้าหมาย (กม.)'].sum():.2f} กม."
+            f"{filtered_summary_df['เป้าหมาย (กม.)'].sum():.2f} กม."
         )
 
         st.markdown("---")
@@ -157,23 +268,23 @@ if sheet_url:
         
         fig_bar.add_trace(
             go.Bar(
-                x=summary_df['ชื่อ'],
-                y=summary_df['ระยะสะสม (กม.)'],
+                x=filtered_summary_df['ชื่อ'],
+                y=filtered_summary_df['ระยะสะสม (กม.)'],
                 name='ระยะสะสม (กม.)',
                 marker_color='#2b5c8f',
-                text=summary_df['ระยะสะสม (กม.)'].map('{:.2f}'.format),
+                text=filtered_summary_df['ระยะสะสม (กม.)'].map('{:.2f}'.format),
                 textposition='outside'
             )
         )
         
         fig_bar.add_trace(
             go.Bar(
-                x=summary_df['ชื่อ'],
-                y=summary_df['เป้าหมาย (กม.)'],
+                x=filtered_summary_df['ชื่อ'],
+                y=filtered_summary_df['เป้าหมาย (กม.)'],
                 name='เป้าหมาย (กม.)',
                 marker_color='#d9534f',
                 opacity=0.6,
-                text=summary_df['เป้าหมาย (กม.)'].map('{:.2f}'.format),
+                text=filtered_summary_df['เป้าหมาย (กม.)'].map('{:.2f}'.format),
                 textposition='outside'
             )
         )
@@ -197,7 +308,7 @@ if sheet_url:
             "📈 พัฒนาการวิ่งรายวันรวมของทุกคน"
         )
         
-        daily_long = daily_df.melt(
+        daily_long = filtered_daily_df.melt(
             id_vars=['ชื่อ'],
             var_name='วันที่',
             value_name='ระยะทาง (กม.)'
@@ -247,7 +358,7 @@ if sheet_url:
             return f'background-color: {color}'
 
         # ฟอร์แมตตัวเลขให้แสดงทศนิยม 2 ตำแหน่งทั้งหมดในตาราง
-        formatted_df = summary_df.copy()
+        formatted_df = filtered_summary_df.copy()
 
         for col in [
             'ระยะสะสม (กม.)',
@@ -274,62 +385,62 @@ if sheet_url:
             "👤 รายละเอียดการวิ่งรายบุคคล"
         )
 
-        selected_member = st.selectbox(
-            "เลือกสมาชิกที่ต้องการดูข้อมูล:",
-            summary_df['ชื่อ'].unique()
-        )
+        if filtered_summary_df.empty:
+            st.info(
+                "🔍 ไม่พบข้อมูลที่ตรงกับเงื่อนไขที่เลือก กรุณาปรับ Filter ใหม่"
+            )
+        else:
+            selected_member = st.selectbox(
+                "เลือกสมาชิกที่ต้องการดูข้อมูล:",
+                filtered_summary_df['ชื่อ'].unique()
+            )
 
-        member_summary = summary_df[
-            summary_df['ชื่อ'] == selected_member
-        ].iloc[0]
+            member_summary = filtered_summary_df[
+                filtered_summary_df['ชื่อ'] == selected_member
+            ].iloc[0]
 
-        member_daily = daily_df[
-            daily_df['ชื่อ'] == selected_member
-        ]
+            m1, m2, m3, m4 = st.columns(4)
 
-        m1, m2, m3, m4 = st.columns(4)
+            m1.metric(
+                "ระยะสะสม",
+                f"{member_summary['ระยะสะสม (กม.)']:.2f} กม."
+            )
 
-        m1.metric(
-            "ระยะสะสม",
-            f"{member_summary['ระยะสะสม (กม.)']:.2f} กม."
-        )
+            m2.metric(
+                "เป้าหมาย",
+                f"{member_summary['เป้าหมาย (กม.)']:.2f} กม."
+            )
 
-        m2.metric(
-            "เป้าหมาย",
-            f"{member_summary['เป้าหมาย (กม.)']:.2f} กม."
-        )
+            rem_val = member_summary['ระยะคงเหลือ (กม.)']
 
-        rem_val = member_summary['ระยะคงเหลือ (กม.)']
+            m3.metric(
+                "ระยะคงเหลือ",
+                f"{0.00 if rem_val < 0 else rem_val:.2f} กม.",
+                delta=(
+                    f"เกินเป้า {-rem_val:.2f} กม."
+                    if rem_val < 0
+                    else f"เหลือ {rem_val:.2f} กม."
+                ),
+                delta_color="normal"
+                if rem_val <= 0
+                else "inverse"
+            )
 
-        m3.metric(
-            "ระยะคงเหลือ",
-            f"{0.00 if rem_val < 0 else rem_val:.2f} กม.",
-            delta=(
-                f"เกินเป้า {-rem_val:.2f} กม."
-                if rem_val < 0
-                else f"เหลือ {rem_val:.2f} กม."
-            ),
-            delta_color="normal"
-            if rem_val <= 0
-            else "inverse"
-        )
+            m4.metric(
+                "ความคืบหน้า",
+                f"{member_summary['เปอร์เซ็นต์ (%)']:.2f}%"
+            )
 
-        m4.metric(
-            "ความคืบหน้า",
-            f"{member_summary['เปอร์เซ็นต์ (%)']:.2f}%"
-        )
-
-        st.progress(
-            max(
-                0.0,
-                min(
-                    float(
-                        member_summary['เปอร์เซ็นต์ (%)']
-                    ) / 100.0,
-                    1.0
+            st.progress(
+                max(
+                    0.0,
+                    min(
+                        float(member_summary['เปอร์เซ็นต์ (%)']) / 100.0,
+                        1.0
+                    )
                 )
             )
-        )
+
 
     except Exception as e:
         st.error(

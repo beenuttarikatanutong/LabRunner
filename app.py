@@ -25,17 +25,17 @@ sheet_url = st.sidebar.text_input(
     placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"
 )
 
+# =========================
+# ลิงก์ CSV ของชีต 100K
+# =========================
 
-# ลิงก์ CSV ของชีต "100K"
-# วางลิงก์ Publish CSV ของแท็บชีต 100K โดยใช้ gid ของชีต 100K
-DEFAULT_SHEET_100K_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQULOfPDpitOoaGE7sgK9X1S6H4ZIAEVlD_7KnjaBSwxXxK52XKmR9cq4ViPsIuvkrUhkxbOZQDBzu5/pub?gid=1446370020&single=true&output=csv"
-
-SHEET_100K_URL = st.sidebar.text_input(
-    "ใส่ลิงก์ CSV ของชีต 100K:",
-    value="",
-    placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?gid=XXXX&single=true&output=csv",
-    help="ใช้ลิงก์ CSV ของแท็บชีตชื่อ 100K โดยตรง ไม่ใช้ชีต2"
+# ดึงข้อมูลจากแท็บชีต 100K โดยตรง
+SHEET_100K_URL = (
+    "https://docs.google.com/spreadsheets/d/e/"
+    "2PACX-1vQULOfPDpitOoaGE7sgK9X1S6H4ZIAEVlD_7KnjaBSwxXxK52XKmR9cq4ViPsIuvkrUhkxbOZQDBzu5/"
+    "pub?gid=1446370020&single=true&output=csv"
 )
+
 
 @st.cache_data(ttl=30)
 def load_and_process_data(url):

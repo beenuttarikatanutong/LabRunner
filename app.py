@@ -25,6 +25,16 @@ sheet_url = st.sidebar.text_input(
     placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"
 )
 
+
+# ลิงก์ CSV ของชีต "100K"
+# วางลิงก์ Publish CSV ของแท็บชีต 100K โดยใช้ gid ของชีต 100K
+SHEET_100K_URL = st.sidebar.text_input(
+    "ใส่ลิงก์ CSV ของชีต 100K:",
+    value="",
+    placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?gid=XXXX&single=true&output=csv",
+    help="ใช้ลิงก์ CSV ของแท็บชีตชื่อ 100K โดยตรง ไม่ใช้ชีต2"
+)
+
 @st.cache_data(ttl=30)
 def load_and_process_data(url):
     df_raw = pd.read_csv(url, header=None)
@@ -117,6 +127,32 @@ def load_and_process_data(url):
     )
     
     return summary_df, daily_df
+
+
+
+@st.cache_data(ttl=30)
+def load_100k_sheet(url):
+    """อ่านข้อมูลจากแท็บชีต 100K โดยตรงและเตรียมสำหรับแสดงตาราง"""
+    df_raw = pd.read_csv(url, header=None)
+
+    # หาแถวหัวตาราง
+    header_row_idx = 0
+    keywords = ['ชื่อ', 'name', 'สมาชิก', 'ระยะสะสม', 'เป้าหมาย', 'target']
+
+    for idx, row in df_raw.iterrows():
+        row_str = " ".join(row.dropna().astype(str))
+        if any(k.lower() in row_str.lower() for k in keywords):
+            header_row_idx = idx
+            break
+
+    df_100k = pd.read_csv(url, header=header_row_idx)
+    df_100k = df_100k.dropna(how='all').dropna(how='all', axis=1)
+    df_100k.columns = [str(c).strip() for c in df_100k.columns]
+
+    # ลบแถวว่างและแถวที่ไม่มีข้อมูลจริง
+    df_100k = df_100k.dropna(how='all').reset_index(drop=True)
+
+    return df_100k
 
 
 if sheet_url:
@@ -377,6 +413,68 @@ if sheet_url:
             ),
             use_container_width=True
         )
+
+        st.markdown("---")
+
+        # ตารางเปรียบเทียบระยะ 100K
+        st.subheader("🏆 ตารางเปรียบเทียบระยะ 100K")
+        st.caption(
+            "ข้อมูลส่วนนี้ดึงจากแท็บชีต 100K โดยตรง ไม่ได้ดึงจากชีต2"
+        )
+
+        if SHEET_100K_URL:
+            try:
+                comparison_100k_df = load_100k_sheet(SHEET_100K_URL)
+
+                if comparison_100k_df.empty:
+                    st.warning("ไม่พบข้อมูลในชีต 100K")
+                else:
+                    # Filter ตาราง 100K ตามชื่อที่ค้นหา หากมีคอลัมน์ชื่อ
+                    name_col_100k = None
+                    for col in comparison_100k_df.columns:
+                        if any(
+                            k in str(col).lower()
+                            for k in ['ชื่อ', 'name', 'สมาชิก']
+                        ):
+                            name_col_100k = col
+                            break
+
+                    display_100k_df = comparison_100k_df.copy()
+
+                    if search_name and name_col_100k:
+                        display_100k_df = display_100k_df[
+                            display_100k_df[name_col_100k]
+                            .astype(str)
+                            .str.contains(
+                                search_name,
+                                case=False,
+                                na=False
+                            )
+                        ]
+
+                    st.dataframe(
+                        display_100k_df,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+                    st.download_button(
+                        "⬇️ ดาวน์โหลดข้อมูลชีต 100K เป็น CSV",
+                        data=display_100k_df.to_csv(
+                            index=False
+                        ).encode("utf-8-sig"),
+                        file_name="comparison_100K.csv",
+                        mime="text/csv"
+                    )
+
+            except Exception as e:
+                st.error(
+                    f"เกิดข้อผิดพลาดในการอ่านชีต 100K: {e}"
+                )
+        else:
+            st.info(
+                "👈 กรุณาวางลิงก์ CSV ของแท็บชีต 100K ที่ Sidebar เพื่อแสดงตารางเปรียบเทียบ"
+            )
 
         st.markdown("---")
 

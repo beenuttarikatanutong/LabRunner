@@ -40,9 +40,7 @@ sheet_url = st.sidebar.text_input(
 # ลิงก์ CSV ของชีต 100K
 # =========================
 SHEET_100K_URL = (
-    "https://docs.google.com/spreadsheets/d/e/"
-    "2PACX-1vQULOfPDpitOoaGE7sgK9X1S6H4ZIAEVlD_7KnjaBSwxXxK52XKmR9cq4ViPsIuvkrUhkxbOZQDBzu5/"
-    "pub?gid=1446370020&single=true&output=csv"
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQULOfPDpitOoaGE7sgK9X1S6H4ZIAEVlD_7KnjaBSwxXxK52XKmR9cq4ViPsIuvkrUhkxbOZQDBzu5/pub?gid=1446370020&single=true&output=csv"
 )
 
 

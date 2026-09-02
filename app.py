@@ -28,7 +28,8 @@ sheet_url = st.sidebar.text_input(
 
 # ลิงก์ CSV ของชีต "100K"
 # วางลิงก์ Publish CSV ของแท็บชีต 100K โดยใช้ gid ของชีต 100K
-SHEET_100K_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQULOfPDpitOoaGE7sgK9X1S6H4ZIAEVlD_7KnjaBSwxXxK52XKmR9cq4ViPsIuvkrUhkxbOZQDBzu5/pub?gid=1446370020&single=true&output=csv"
+DEFAULT_SHEET_100K_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQULOfPDpitOoaGE7sgK9X1S6H4ZIAEVlD_7KnjaBSwxXxK52XKmR9cq4ViPsIuvkrUhkxbOZQDBzu5/pub?gid=1446370020&single=true&output=csv"
+
 SHEET_100K_URL = st.sidebar.text_input(
     "ใส่ลิงก์ CSV ของชีต 100K:",
     value="",

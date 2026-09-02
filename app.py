@@ -451,10 +451,14 @@ if sheet_url:
                                 na=False
                             )
                         ]
-# ==================================
-# เลือกเฉพาะ 4 คอลัมน์ที่ต้องการ
-# ==================================
+# ทำความสะอาดชื่อคอลัมน์
+display_100k_df.columns = (
+    display_100k_df.columns
+    .astype(str)
+    .str.strip()
+)
 
+# เลือกเฉพาะ 4 คอลัมน์ที่ต้องการ
 selected_columns = [
     "ชื่อสมาชิก",
     "เป้าหมาย (กิโลเมตร)",
@@ -462,19 +466,43 @@ selected_columns = [
     "ระยะคงเหลือ"
 ]
 
-existing_columns = [
+# ตรวจสอบว่ามีคอลัมน์ครบหรือไม่
+missing_columns = [
     col for col in selected_columns
-    if col in display_100k_df.columns
+    if col not in display_100k_df.columns
 ]
 
-display_100k_df = display_100k_df[
-    existing_columns
-].copy()
-                    st.dataframe(
-                        display_100k_df,
-                        use_container_width=True,
-                        hide_index=True
-                    )
+if missing_columns:
+    st.error(
+        f"ไม่พบคอลัมน์: {', '.join(missing_columns)}"
+    )
+
+    st.write("ชื่อคอลัมน์ที่พบในชีต:")
+    st.write(display_100k_df.columns.tolist())
+
+else:
+    # เลือกเฉพาะ 4 คอลัมน์
+    display_100k_df = display_100k_df[
+        selected_columns
+    ].copy()
+
+    # แสดงตาราง
+    st.dataframe(
+        display_100k_df,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # ดาวน์โหลด CSV
+    st.download_button(
+        "⬇️ ดาวน์โหลดข้อมูลชีต 100K เป็น CSV",
+        data=display_100k_df.to_csv(
+            index=False
+        ).encode("utf-8-sig"),
+        file_name="comparison_100K.csv",
+        mime="text/csv"
+    )
+                 
 
                     st.download_button(
                         "⬇️ ดาวน์โหลดข้อมูลชีต 100K เป็น CSV",

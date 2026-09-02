@@ -451,7 +451,25 @@ if sheet_url:
                                 na=False
                             )
                         ]
+# ==================================
+# เลือกเฉพาะ 4 คอลัมน์ที่ต้องการ
+# ==================================
 
+selected_columns = [
+    "ชื่อสมาชิก",
+    "เป้าหมาย (กิโลเมตร)",
+    "ระยะสะสม100K",
+    "ระยะคงเหลือ"
+]
+
+existing_columns = [
+    col for col in selected_columns
+    if col in display_100k_df.columns
+]
+
+display_100k_df = display_100k_df[
+    existing_columns
+].copy()
                     st.dataframe(
                         display_100k_df,
                         use_container_width=True,
